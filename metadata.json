@@ -1,0 +1,8 @@
+{
+  "name": "ArtLens AI",
+  "description": "An AR-powered art identification tool using Gemini Flash 2.5 and Google Search to analyze artwork in real-time.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
