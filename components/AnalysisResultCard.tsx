@@ -1,34 +1,70 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { IdentifyResponse, Language, UserContext } from '../types';
 import { ChatWindow } from './ChatWindow';
+import { t } from '../utils/i18n';
 
 interface AnalysisResultCardProps {
   data: IdentifyResponse;
   language: Language;
   userContext: UserContext;
   onClose: () => void;
-  onDeepAnalyze?: () => void; // Made optional as it's now automated
+  onDeepAnalyze?: () => void;
   isDeepAnalyzing: boolean;
   forcedChatOpen?: boolean;
   initialChatQuery?: string | null;
   onChatClose?: () => void;
+  onScanAnother?: () => void;
+  onPersonaChange?: (persona: 'guide' | 'academic' | 'blogger') => void;
+  onGenerateMe?: () => void;
+  hasSelfie?: boolean;
 }
 
-export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({ 
-  data, 
+const getPersonaLabel = (persona: string, language: Language): string => {
+  const map: Record<string, string> = {
+    guide: t('result.guide', language),
+    academic: t('result.curator', language),
+    blogger: t('result.blogger', language),
+  };
+  return map[persona] || map.guide;
+};
+
+const getDomainFromUrl = (url: string): string => {
+  try {
+    return new URL(url).hostname.replace('www.', '');
+  } catch {
+    return 'source';
+  }
+};
+
+const handleShare = async (data: IdentifyResponse) => {
+  const text = `${data.title} by ${data.artist} (${data.year}) — Identified with ArtLens AI`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: data.title, text });
+    } catch { /* user cancelled */ }
+  } else {
+    await navigator.clipboard.writeText(text);
+  }
+};
+
+export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
+  data,
   language,
   userContext,
-  onClose, 
+  onClose,
   isDeepAnalyzing,
   forcedChatOpen = false,
   initialChatQuery = null,
-  onChatClose
+  onChatClose,
+  onScanAnother,
+  onPersonaChange,
+  onGenerateMe,
+  hasSelfie = false,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
 
-  // Handle external force open (from annotations)
   useEffect(() => {
       if (forcedChatOpen) {
           setIsChatOpen(true);
@@ -47,28 +83,28 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
       if (onChatClose) onChatClose();
   };
 
-  // Minimized "Pill" View
+  // Minimized "Pill" View — warm glass with gold accent
   if (isMinimized && !isChatOpen) {
       return (
           <div className="w-full max-w-lg mx-auto pointer-events-auto animate-slide-up mb-4 px-4">
-              <div 
+              <div
                   onClick={() => setIsMinimized(false)}
-                  className="bg-[#1e1e1e]/90 backdrop-blur-xl border border-white/20 shadow-2xl rounded-full p-2 pl-6 flex items-center justify-between cursor-pointer active:scale-95 transition-transform"
+                  className="warm-glass shadow-2xl rounded-full p-2 pl-6 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-all duration-300"
               >
                   <div className="flex flex-col overflow-hidden mr-4">
-                      <span className="text-white font-semibold text-sm truncate">{data.title}</span>
-                      <span className="text-zinc-400 text-xs truncate">{data.artist}</span>
+                      <span className="font-serif text-[var(--text)] text-sm truncate">{data.title}</span>
+                      <span className="text-secondary text-xs truncate">{data.artist}</span>
                   </div>
                   <div className="flex gap-2">
-                       <button 
+                       <button
                         onClick={(e) => { e.stopPropagation(); setIsMinimized(false); }}
-                        className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-white"
+                        className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary"
                        >
                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
                        </button>
-                       <button 
+                       <button
                           onClick={(e) => { e.stopPropagation(); onClose(); }}
-                          className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400"
+                          className="w-10 h-10 rounded-full bg-[var(--surface)] flex items-center justify-center text-secondary"
                        >
                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                        </button>
@@ -83,134 +119,184 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
     <div className={`w-full max-w-lg mx-auto transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] pointer-events-auto mb-0
         ${isChatOpen ? 'h-[85vh]' : 'h-auto'}
     `}>
-      {/* Floating Card Surface */}
-      <div className={`bg-[#1e1e1e]/95 backdrop-blur-xl border-t border-x border-white/10 shadow-2xl rounded-t-[2.5rem] overflow-hidden flex flex-col transition-all duration-500
+      <div className={`bg-[var(--surface)]/95 backdrop-blur-xl border-t border-x border-[var(--primary-dim)] shadow-2xl rounded-t-[2.5rem] overflow-hidden flex flex-col transition-all duration-500
           ${isChatOpen ? 'h-full rounded-b-none' : 'max-h-[60vh] rounded-b-[2.5rem] mb-6'}
       `}>
-        
-        {/* Drag Handle Area - Only visible when collapsed */}
+
+        {/* Drag Handle */}
         {!isChatOpen && (
           <div className="w-full flex justify-center pt-4 pb-2 cursor-pointer touch-none group" onClick={() => setIsMinimized(true)}>
-              <div className="w-12 h-1.5 bg-zinc-600 rounded-full opacity-50 group-hover:bg-primary transition-colors" />
+              <div className="w-12 h-1 bg-secondary/30 rounded-full group-hover:bg-primary/50 transition-colors duration-300" />
           </div>
         )}
 
-        {/* Content Container */}
+        {/* Content */}
         <div className={`flex flex-col flex-1 min-h-0 ${isChatOpen ? '' : 'overflow-y-auto no-scrollbar'}`}>
-          
+
           {isChatOpen ? (
-            <ChatWindow 
-                key={`${data.title}-${language}`} // Force remount when artwork or language changes to reset chat context
-                artData={data} 
-                language={language} 
+            <ChatWindow
+                key={`${data.title}-${language}`}
+                artData={data}
+                language={language}
                 userContext={userContext}
-                onClose={handleChatClose} 
+                onClose={handleChatClose}
                 initialMessage={initialChatQuery}
+                autoStartVoice={forcedChatOpen}
+                onPersonaChange={onPersonaChange}
             />
           ) : (
             <div ref={scrollRef} className="px-6 pb-8 pt-2 flex flex-col">
-              
+
               {/* Title Header */}
               <div className="flex justify-between items-start mb-5">
-                <div>
-                   <h2 className="text-2xl font-normal text-white leading-tight tracking-tight pr-2">
+                <div className="flex-1 pr-4">
+                  <h2 className="font-serif text-2xl text-[var(--text)] leading-tight tracking-tight">
                     {data.title}
                   </h2>
-                  <p className="text-secondary text-sm font-normal mt-1">{data.artist}, {data.year}</p>
+                  <p className="text-secondary text-sm mt-1.5">{data.artist}, {data.year}</p>
                 </div>
-                {/* Close Button (X) */}
-                <button 
-                  onClick={onClose}
-                  className="p-2 bg-zinc-800 rounded-full hover:bg-zinc-700 text-white transition-colors shrink-0"
+                <div className="flex gap-2 shrink-0">
+                  {/* Share */}
+                  <button
+                    onClick={() => handleShare(data)}
+                    className="p-2 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors duration-300"
+                    aria-label="Share"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                    </svg>
+                  </button>
+                  {/* Close */}
+                  <button
+                    onClick={onClose}
+                    className="p-2 rounded-full bg-[var(--surface-variant)] hover:bg-secondary/20 text-secondary transition-colors duration-300"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Tags — gold accent borders */}
+              <div className="flex flex-wrap gap-2 mb-6">
+                <Badge label={data.country} />
+                <Badge label={data.style} />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 mb-6">
+                <button
+                  onClick={() => setIsChatOpen(true)}
+                  className="flex-1 py-3.5 px-6 rounded-full bg-primary text-onPrimary font-semibold text-sm transition-all duration-300 hover:brightness-110 active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-primary/10"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                  <span>{t('result.chatWith', language)} {getPersonaLabel(userContext.persona, language)}</span>
                 </button>
               </div>
 
-              {/* Tags */}
-              <div className="flex flex-wrap gap-2 mb-6">
-                 <Badge label={data.country} />
-                 <Badge label={data.style} />
-              </div>
+              {/* Generate Me Button */}
+              {onGenerateMe && hasSelfie && (
+                <button
+                  onClick={onGenerateMe}
+                  className="w-full py-3 mb-6 rounded-full border border-primary/20 text-primary text-sm hover:bg-primary/10 transition-all duration-300 flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
+                  </svg>
+                  <span>{t('generate.button', language)}</span>
+                </button>
+              )}
 
-              {/* Action Buttons (Primary) */}
-              <div className="flex gap-3 mb-6">
-                  <button 
-                    onClick={() => setIsChatOpen(true)}
-                    className="flex-1 py-3.5 px-6 rounded-full bg-primary text-onPrimary font-semibold text-sm transition-transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-primary/20"
-                  >
-                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
-                     <span>Chat with Guide</span>
-                  </button>
-              </div>
+              {/* Scan Another */}
+              {onScanAnother && (
+                <button
+                  onClick={onScanAnother}
+                  className="w-full py-3 mb-6 rounded-full border border-[var(--primary-dim)] text-secondary text-sm hover:text-primary hover:border-primary/30 transition-all duration-300 flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span>{t('result.scanAnother', language)}</span>
+                </button>
+              )}
 
               {/* Description */}
-              <p className="text-sm text-zinc-300 leading-relaxed mb-6 font-light">
+              <p className="text-sm text-[var(--text)]/80 leading-relaxed mb-6">
                 {data.description}
               </p>
 
-              {/* Fun Fact Card */}
+              {/* Fun Fact Card — gold tinted */}
               {data.funFact && (
-                <div className="bg-surface-variant p-4 rounded-2xl mb-6 border border-white/5">
-                  <div className="flex items-center gap-2 mb-2">
-                     <span className="text-lg">💡</span>
-                     <span className="text-xs font-bold uppercase tracking-wider text-secondary">Did you know?</span>
-                  </div>
-                  <p className="text-xs text-zinc-300 italic leading-relaxed">"{data.funFact}"</p>
+                <div className="bg-primary/5 border border-primary/10 p-5 rounded-2xl mb-6">
+                  <p className="text-xs font-mono uppercase tracking-[0.15em] text-primary/70 mb-2">
+                    {t('result.didYouKnow', language)}
+                  </p>
+                  <p className="text-sm text-[var(--text)]/70 italic leading-relaxed">"{data.funFact}"</p>
                 </div>
               )}
 
-              {/* Deep Analysis Content */}
+              {/* Deep Analysis */}
               {data.deepAnalysis ? (
                 <div className="space-y-6 animate-fade-in pb-2">
                   <Divider />
-                  
-                  {/* Curiosities / Unique Experiences (Highlighted First) */}
+
+                  {/* Curiosities — highlighted gold card */}
                   {data.deepAnalysis.curiosities && data.deepAnalysis.curiosities.length > 0 && (
-                      <div className="bg-primary/5 border border-primary/20 rounded-2xl p-5 relative overflow-hidden">
-                           <div className="absolute top-0 right-0 p-4 opacity-10">
-                               <svg className="w-16 h-16 text-primary" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                           </div>
-                           <h3 className="text-primary text-xs font-bold uppercase tracking-wider mb-3 relative z-10">Unique Insights</h3>
-                           <ul className="space-y-3 relative z-10">
-                               {data.deepAnalysis.curiosities.map((item, idx) => (
-                                   <li key={idx} className="flex gap-3 text-sm text-zinc-200 font-light">
-                                       <span className="text-primary mt-1">•</span>
-                                       <span>{item}</span>
-                                   </li>
-                               ))}
-                           </ul>
-                      </div>
+                    <div className="bg-primary/5 border border-primary/15 rounded-2xl p-5 relative overflow-hidden">
+                      <h3 className="font-mono text-primary/80 text-xs uppercase tracking-[0.15em] mb-3">{t('result.uniqueInsights', language)}</h3>
+                      <ul className="space-y-3">
+                        {data.deepAnalysis.curiosities.map((item, idx) => (
+                          <li key={idx} className="flex gap-3 text-sm text-[var(--text)]/80">
+                            <span className="text-primary/60 mt-0.5 shrink-0 min-h-auto">
+                              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                            </span>
+                            <span className="leading-relaxed">{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
 
-                  <Section title="Historical Context" content={data.deepAnalysis.historicalContext} />
-                  <Section title="Symbolism" content={data.deepAnalysis.symbolism} />
+                  <Section title={t('result.historicalContext', language)} content={data.deepAnalysis.historicalContext} />
+
+                  {/* Technical Analysis — new section */}
+                  {data.deepAnalysis.technicalAnalysis && (
+                    <Section title={t('result.technique', language)} content={data.deepAnalysis.technicalAnalysis} />
+                  )}
+
+                  <Section title={t('result.symbolism', language)} content={data.deepAnalysis.symbolism} />
                 </div>
               ) : isDeepAnalyzing ? (
-                 <div className="flex flex-col gap-4 animate-pulse pb-4">
-                     <Divider />
-                     <div className="h-4 w-1/3 bg-white/10 rounded"></div>
-                     <div className="h-20 w-full bg-white/5 rounded"></div>
-                     <div className="h-4 w-1/4 bg-white/10 rounded"></div>
-                     <div className="h-20 w-full bg-white/5 rounded"></div>
-                     <p className="text-center text-xs text-zinc-500 italic mt-2">Uncovering hidden details...</p>
-                 </div>
+                <div className="flex flex-col gap-4 animate-pulse pb-4">
+                  <Divider />
+                  <div className="h-3 w-1/3 bg-primary/10 rounded" />
+                  <div className="h-20 w-full bg-primary/5 rounded-xl" />
+                  <div className="h-3 w-1/4 bg-primary/10 rounded" />
+                  <div className="h-20 w-full bg-primary/5 rounded-xl" />
+                  <p className="text-center text-xs text-secondary/50 italic mt-2">{t('result.uncovering', language)}</p>
+                </div>
               ) : null}
 
-              {/* Footer / Sources */}
+              {/* Sources — domain chips */}
               {data.sources.length > 0 && (
-                 <div className="mt-4 pt-4 border-t border-white/5">
-                   <p className="text-[10px] text-zinc-500 mb-2">Sources</p>
-                   <div className="flex flex-wrap gap-2">
-                     {data.sources.slice(0, 3).map((source, i) => (
-                       <a key={i} href={source.uri} target="_blank" rel="noreferrer" className="text-[10px] text-primary underline truncate max-w-[150px]">
-                         {source.title || 'Source'}
-                       </a>
-                     ))}
-                   </div>
-                 </div>
+                <div className="mt-4 pt-4 border-t border-[var(--primary-dim)]">
+                  <p className="text-[10px] font-mono text-secondary/40 mb-2 uppercase tracking-wider">{t('result.sources', language)}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {data.sources.slice(0, 3).map((source, i) => (
+                      <a
+                        key={i}
+                        href={source.uri}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="min-h-auto text-[10px] font-mono text-primary/60 bg-primary/5 border border-primary/10 px-2.5 py-1 rounded-full hover:bg-primary/10 transition-colors duration-300"
+                      >
+                        {source.title || getDomainFromUrl(source.uri || '')}
+                      </a>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -221,16 +307,16 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
 };
 
 const Badge = ({ label }: { label: string }) => (
-  <span className="px-2.5 py-1 rounded-lg bg-surface-variant border border-white/5 text-xs text-zinc-300">
+  <span className="min-h-auto px-3 py-1 rounded-lg bg-[var(--surface-variant)] border border-[var(--primary-dim)] text-xs font-mono text-secondary">
     {label}
   </span>
 );
 
-const Section = ({ title, content }: { title: string, content: string }) => (
+const Section = ({ title, content }: { title: string; content: string }) => (
   <div>
-    <h3 className="text-primary text-xs font-semibold uppercase tracking-wider mb-1.5">{title}</h3>
-    <p className="text-sm text-zinc-300 leading-relaxed font-light">{content}</p>
+    <h3 className="font-mono text-primary/70 text-xs uppercase tracking-[0.15em] mb-2">{title}</h3>
+    <p className="text-sm text-[var(--text)]/80 leading-relaxed">{content}</p>
   </div>
 );
 
-const Divider = () => <div className="h-px bg-white/10 w-full my-2" />;
+const Divider = () => <div className="h-px bg-[var(--primary-dim)] w-full my-2" />;
