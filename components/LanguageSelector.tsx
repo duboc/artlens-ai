@@ -7,34 +7,53 @@ interface LanguageSelectorProps {
 
 export const LanguageSelector: React.FC<LanguageSelectorProps> = ({ onSelect }) => {
   return (
-    <div className="absolute inset-0 z-50 bg-[#121212] flex flex-col px-6 py-12 animate-fade-in">
-      
+    <div className="absolute inset-0 z-50 bg-[var(--bg)] flex flex-col px-6 py-12 pt-safe pb-safe">
+
       <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full">
-        <div className="mb-12">
-           <h1 className="text-5xl font-light text-white mb-2 tracking-tight">ArtLens</h1>
-           <p className="text-primary text-sm font-medium tracking-widest uppercase">AI Museum Curator</p>
+        {/* Title — staggered reveal */}
+        <div className="mb-14 opacity-0 animate-reveal">
+          <h1 className="font-serif text-6xl text-shimmer mb-3 tracking-tight leading-none">
+            ArtLens
+          </h1>
+          <p className="text-secondary text-sm font-medium tracking-[0.2em] uppercase opacity-0 animate-reveal-delay-1">
+            AI Museum Companion
+          </p>
         </div>
 
-        <div className="space-y-4">
-           <LanguageOption label="English" onClick={() => onSelect('en')} />
-           <LanguageOption label="Português" onClick={() => onSelect('pt')} />
-           <LanguageOption label="Español" onClick={() => onSelect('es')} />
+        {/* Subtitle */}
+        <p className="text-secondary/70 text-sm mb-8 opacity-0 animate-reveal-delay-1">
+          Point your camera at any artwork
+        </p>
+
+        {/* Language Options — staggered */}
+        <div className="space-y-3 opacity-0 animate-reveal-delay-2">
+          <LanguageOption label="English" subtitle="EN" onClick={() => onSelect('en')} />
+          <LanguageOption label="Português" subtitle="PT" onClick={() => onSelect('pt')} />
+          <LanguageOption label="Español" subtitle="ES" onClick={() => onSelect('es')} />
         </div>
       </div>
 
-      <div className="text-center">
-        <p className="text-zinc-600 text-xs">Powered by Gemini Flash 2.5</p>
+      {/* Footer */}
+      <div className="text-center opacity-0 animate-reveal-delay-3">
+        <p className="text-secondary/30 text-xs font-mono tracking-wider">v1.0</p>
       </div>
     </div>
   );
 };
 
-const LanguageOption = ({ label, onClick }: { label: string, onClick: () => void }) => (
-  <button 
+const LanguageOption = ({ label, subtitle, onClick }: { label: string; subtitle: string; onClick: () => void }) => (
+  <button
     onClick={onClick}
-    className="w-full py-5 px-6 rounded-2xl bg-zinc-900 border border-zinc-800 text-left text-lg font-medium text-zinc-200 hover:bg-zinc-800 hover:border-zinc-700 active:scale-[0.98] transition-all flex justify-between items-center group"
+    className="w-full py-5 px-6 rounded-2xl bg-[var(--surface)] border border-[var(--primary-dim)] text-left text-lg font-medium text-[var(--text)] hover:border-primary/40 active:scale-[0.98] transition-all duration-300 flex justify-between items-center group"
   >
-    <span>{label}</span>
-    <span className="text-zinc-600 group-hover:text-primary transition-colors">→</span>
+    <div className="flex items-center gap-4">
+      <span className="font-mono text-xs text-secondary/50 w-6">{subtitle}</span>
+      <span className="font-sans">{label}</span>
+    </div>
+    <span className="text-secondary/30 group-hover:text-primary transition-colors duration-300">
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
+      </svg>
+    </span>
   </button>
 );
