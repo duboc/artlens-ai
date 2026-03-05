@@ -1,25 +1,19 @@
-import { GoogleGenAI } from "@google/genai";
 import { IdentifyResponse, GroundingSource, ArtData, DeepArtData, Language, Annotation } from '../types';
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-const MODEL_ID = 'gemini-2.5-flash';
+import { apiPost } from './apiClient';
 
 // Helper to clean and parse JSON from model response
 const parseJSON = (text: string): any => {
   try {
     if (!text) return null;
-    
+
     // 1. Remove markdown code blocks if present
     let cleanText = text.replace(/```json\n?|```/g, '').trim();
-    
+
     // 2. Handle potential leading/trailing non-json text
-    // We look for the outermost {} or []
     const firstBrace = cleanText.indexOf('{');
     const firstBracket = cleanText.indexOf('[');
-    
+
     let start = -1;
-    // Determine start based on what comes first, assuming we want an object usually
     if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
         start = firstBrace;
     } else if (firstBracket !== -1) {
@@ -27,11 +21,10 @@ const parseJSON = (text: string): any => {
     }
 
     if (start !== -1) {
-       // Find corresponding end
        const lastBrace = cleanText.lastIndexOf('}');
        const lastBracket = cleanText.lastIndexOf(']');
        const end = Math.max(lastBrace, lastBracket);
-       
+
        if (end !== -1) {
            cleanText = cleanText.substring(start, end + 1);
        }
@@ -43,7 +36,6 @@ const parseJSON = (text: string): any => {
     return JSON.parse(cleanText);
   } catch (e) {
     console.error("JSON Parse Error:", e);
-    // console.log("Failed text snippet:", text.substring(0, 200) + "...");
     return null;
   }
 };
@@ -82,13 +74,10 @@ export const identifyArtwork = async (base64Image: string, language: Language): 
       }
     };
 
-    // Task 1: Identification (Uses Google Search)
-    // We cannot use responseMimeType: 'application/json' here because of the tool.
-    // We rely on the model following instructions and our parseJSON helper.
     const searchPrompt = `
-      Identify the piece of art in this image. 
+      Identify the piece of art in this image.
       Return a JSON object with these exact keys: "title", "artist", "year", "country", "funFact".
-      
+
       Example:
       {
         "title": "Starry Night",
@@ -97,20 +86,17 @@ export const identifyArtwork = async (base64Image: string, language: Language): 
         "country": "Netherlands",
         "funFact": "Painted from his asylum window."
       }
-      
+
       "country": The artist's nationality.
       "funFact": An interesting trivia point.
-      
-      IMPORTANT: 
+
+      IMPORTANT:
       - Use Google Search to verify details.
-      - Provide all string values in ${langName}. 
+      - Provide all string values in ${langName}.
       - The JSON keys must remain in English.
       - Do not include markdown formatting.
     `;
 
-    // Task 2: Visual Analysis (Pure Gemini, Strict JSON)
-    // We USE responseMimeType: 'application/json' here for robust array handling.
-    // This handles Style, Description, and Bounding Boxes.
     const visualPrompt = `
       Analyze the visual style and topography of this image.
       Return a JSON object with keys: "style", "description", "annotations".
@@ -123,7 +109,7 @@ export const identifyArtwork = async (base64Image: string, language: Language): 
           {
             "label": "Region Name",
             "description": "Significance of this region.",
-            "box_2d": [ymin, xmin, ymax, xmax] 
+            "box_2d": [ymin, xmin, ymax, xmax]
           }
         ]
       }
@@ -132,34 +118,27 @@ export const identifyArtwork = async (base64Image: string, language: Language): 
       - "box_2d": Array of 4 integers [ymin, xmin, ymax, xmax] on a 0-1000 scale.
       - Identify 4-5 distinct, interesting regions.
 
-      IMPORTANT: 
+      IMPORTANT:
       - Provide string values in ${langName}.
       - JSON keys must remain in English.
     `;
 
-    // Execute Parallel Calls
-    // 1. Search Request (Tool enabled, Text output)
-    // 2. Visual Request (No Tools, JSON output)
+    // Execute Parallel Calls via proxy
     const [searchResponse, visualResponse] = await Promise.all([
-      ai.models.generateContent({
-        model: MODEL_ID,
-        contents: { parts: [imagePart, { text: searchPrompt }] },
-        config: { 
-          tools: [{ googleSearch: {} }] 
-        }
+      // 1. Search-grounded identification (tool enabled, text output)
+      apiPost('/api/generate', {
+        contents: [{ role: 'user', parts: [imagePart, { text: searchPrompt }] }],
+        tools: [{ googleSearchRetrieval: {} }],
       }),
-      ai.models.generateContent({
-        model: MODEL_ID,
-        contents: { parts: [imagePart, { text: visualPrompt }] },
-        config: { 
-          responseMimeType: 'application/json' 
-        } 
-      })
+      // 2. Visual analysis (no tools, JSON output)
+      apiPost('/api/generate', {
+        contents: [{ role: 'user', parts: [imagePart, { text: visualPrompt }] }],
+        generationConfig: { responseMimeType: 'application/json' },
+      }),
     ]);
 
-    // Parse Results
+    // Parse Results — proxy adds top-level `text` field
     const searchData = parseJSON(searchResponse.text || "{}");
-    // visualResponse should be valid JSON due to config, but we use parseJSON to be safe against markdown wrappers
     const visualData = parseJSON(visualResponse.text || "{}");
 
     // Process Annotations with IDs and validation
@@ -172,7 +151,7 @@ export const identifyArtwork = async (base64Image: string, language: Language): 
         box_2d: ann.box_2d
       }));
 
-    // Merge Sources (Mostly from search response)
+    // Merge Sources from both responses
     const sources = [
       ...extractSources(searchResponse),
       ...extractSources(visualResponse)
@@ -180,17 +159,16 @@ export const identifyArtwork = async (base64Image: string, language: Language): 
 
     const uniqueSources = Array.from(new Map(sources.map(s => [s.uri, s])).values());
 
-    // Construct Final Object
     return {
       title: searchData?.title || "Unknown Artwork",
       artist: searchData?.artist || "Unknown Artist",
       year: searchData?.year || "Unknown Date",
       country: searchData?.country || "Unknown Origin",
       funFact: searchData?.funFact || "No trivia available.",
-      
+
       style: visualData?.style || "Style Unknown",
       description: visualData?.description || "Analysis available.",
-      
+
       sources: uniqueSources,
       annotations: annotations
     };
@@ -206,11 +184,11 @@ export const getDeepArtworkAnalysis = async (base64Image: string, currentData: A
   try {
     const prompt = `
       Act as a world-class art historian. Provide a deep analysis of "${currentData.title}" by ${currentData.artist}.
-      
+
       Return a JSON object with keys: "historicalContext", "technicalAnalysis", "symbolism", "curiosities".
-      
+
       "curiosities": An array of 3 unique, lesser-known facts or specific details about this work.
-      
+
       IMPORTANT: Provide content in ${langName}. JSON keys in English.
     `;
 
@@ -221,16 +199,13 @@ export const getDeepArtworkAnalysis = async (base64Image: string, currentData: A
       }
     };
 
-    const response = await ai.models.generateContent({
-      model: MODEL_ID,
-      contents: { parts: [imagePart, { text: prompt }] },
-      config: {
-         responseMimeType: 'application/json',
-      }
+    const response = await apiPost('/api/generate', {
+      contents: [{ role: 'user', parts: [imagePart, { text: prompt }] }],
+      generationConfig: { responseMimeType: 'application/json' },
     });
 
     const data = parseJSON(response.text || "{}");
-    
+
     return {
       historicalContext: data?.historicalContext || "Context unavailable.",
       technicalAnalysis: data?.technicalAnalysis || "Technical analysis unavailable.",

@@ -55,5 +55,17 @@ export type Persona = 'guide' | 'academic' | 'blogger';
 
 export interface UserContext {
   name: string;
+  email: string;
   persona: Persona;
+  selfieUrl?: string;
+}
+
+export interface GeneratedImage {
+  id: string;
+  scanId: string;
+  artworkTitle: string;
+  artworkArtist: string;
+  imageUrl: string;
+  prompt: string;
+  createdAt: number;
 }
