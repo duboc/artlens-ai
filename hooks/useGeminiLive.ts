@@ -194,14 +194,14 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
             model: 'gemini-live-2.5-flash-native-audio',
             generation_config: {
               response_modalities: ['AUDIO'],
+              speech_config: {
+                voice_config: {
+                  prebuilt_voice_config: { voice_name: 'Kore' },
+                },
+              },
             },
             system_instruction: {
               parts: [{ text: systemInstruction }],
-            },
-            speech_config: {
-              voice_config: {
-                prebuilt_voice_config: { voice_name: 'Kore' },
-              },
             },
             input_audio_transcription: {},
             output_audio_transcription: {},

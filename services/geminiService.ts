@@ -128,7 +128,7 @@ export const identifyArtwork = async (base64Image: string, language: Language): 
       // 1. Search-grounded identification (tool enabled, text output)
       apiPost('/api/generate', {
         contents: [{ role: 'user', parts: [imagePart, { text: searchPrompt }] }],
-        tools: [{ googleSearchRetrieval: {} }],
+        tools: [{ google_search: {} }],
       }),
       // 2. Visual analysis (no tools, JSON output)
       apiPost('/api/generate', {

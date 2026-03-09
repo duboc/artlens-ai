@@ -65,9 +65,9 @@ router.post('/', async (req: Request, res: Response) => {
     // Add convenience top-level text field
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
     res.json({ text, ...data });
-  } catch (err) {
+  } catch (err: any) {
     console.error('Generate error:', err);
-    res.status(502).json({ error: 'Failed to forward request to Vertex AI' });
+    res.status(502).json({ error: `Failed to forward request to Vertex AI: ${err.message || err}` });
   }
 });
 

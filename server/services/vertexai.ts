@@ -26,7 +26,10 @@ export async function getAccessToken(): Promise<string> {
 export function getGenerateUrl(model?: string): string {
   const region = config.vertex.regionText;
   const modelName = model || config.vertex.modelText;
-  return `https://${region}-aiplatform.googleapis.com/v1/projects/${config.projectId}/locations/${region}/publishers/google/models/${modelName}:generateContent`;
+  const host = region === 'global'
+    ? 'aiplatform.googleapis.com'
+    : `${region}-aiplatform.googleapis.com`;
+  return `https://${host}/v1/projects/${config.projectId}/locations/${region}/publishers/google/models/${modelName}:generateContent`;
 }
 
 export function getImageGenerateUrl(): string {
