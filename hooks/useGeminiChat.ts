@@ -35,6 +35,10 @@ export const useGeminiChat = (artData: IdentifyResponse, language: Language, exp
     localStorage.setItem(storageKey, JSON.stringify(msgs));
   }, [storageKey]);
 
+  // Use a ref to always have access to the latest messages without re-creating sendMessage
+  const messagesRef = useRef<ChatMessage[]>(messages);
+  messagesRef.current = messages;
+
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim()) return;
 
@@ -45,51 +49,39 @@ export const useGeminiChat = (artData: IdentifyResponse, language: Language, exp
       timestamp: Date.now()
     };
 
-    setMessages(prev => {
-      const updated = [...prev, userMsg];
-      saveMessages(updated);
-      return updated;
-    });
+    const updatedMessages = [...messagesRef.current, userMsg];
+    setMessages(updatedMessages);
+    saveMessages(updatedMessages);
     setIsLoading(true);
 
     try {
       // Build full conversation history for the API
-      // Use current messages + the new user message
-      setMessages(currentMessages => {
-        // Build contents from all messages (including userMsg which was just added)
-        const contents = currentMessages.map(msg => ({
-          role: msg.role,
-          parts: [{ text: msg.text }]
-        }));
+      const contents = updatedMessages.map(msg => ({
+        role: msg.role,
+        parts: [{ text: msg.text }]
+      }));
 
-        // Fire the API call (async, result handled via .then)
-        apiPost('/api/generate', {
-          contents,
-          systemInstruction: {
-            parts: [{ text: systemInstructionRef.current() }]
-          },
-        }).then(response => {
-          const modelMsg: ChatMessage = {
-            id: (Date.now() + 1).toString(),
-            role: 'model',
-            text: response.text || "...",
-            timestamp: Date.now()
-          };
-          setMessages(prev => {
-            const updated = [...prev, modelMsg];
-            saveMessages(updated);
-            return updated;
-          });
-        }).catch(e => {
-          console.error("Chat error", e);
-        }).finally(() => {
-          setIsLoading(false);
-        });
+      const response = await apiPost('/api/generate', {
+        contents,
+        systemInstruction: {
+          parts: [{ text: systemInstructionRef.current() }]
+        },
+      });
 
-        return currentMessages; // Don't change state here
+      const modelMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'model',
+        text: response.text || "...",
+        timestamp: Date.now()
+      };
+      setMessages(prev => {
+        const updated = [...prev, modelMsg];
+        saveMessages(updated);
+        return updated;
       });
     } catch (e) {
       console.error("Chat error", e);
+    } finally {
       setIsLoading(false);
     }
   }, [saveMessages]);
