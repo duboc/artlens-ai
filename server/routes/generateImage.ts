@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getAccessToken, getImageGenerateUrl } from '../services/vertexai';
 import { downloadBuffer, uploadBuffer, getSignedUrl } from '../services/storage';
 import { getFirestore, FieldValue } from '../services/firestore';
+import { log } from '../utils/logger';
 
 const router = Router();
 
@@ -33,6 +34,10 @@ router.post('/', async (req: Request, res: Response) => {
     const prompt = `Generate a creative artistic portrait of the person in this photo, reimagined in the style of "${artworkTitle}" by ${artworkArtist}${artworkYear ? ` (${artworkYear})` : ''}${artworkStyle ? `, ${artworkStyle} style` : ''}. Maintain the person's facial features and likeness while fully applying the artistic style, color palette, brushwork, and composition techniques of the original artwork. Make it look like the person belongs in that artwork.`;
 
     // 3. Call Gemini with image generation
+    log.info('generate-image', `→ Generating portrait for "${artworkTitle}" by ${artworkArtist}`, {
+      user: userId.slice(0, 8),
+    });
+    const startTime = Date.now();
     const token = await getAccessToken();
     const url = getImageGenerateUrl();
 
@@ -66,13 +71,15 @@ router.post('/', async (req: Request, res: Response) => {
     try {
       result = JSON.parse(responseText);
     } catch {
-      console.error('Image generation returned non-JSON:', responseText.slice(0, 200));
+      log.error('generate-image', 'Vertex AI returned non-JSON', { response: responseText.slice(0, 200) });
       res.status(502).json({ error: 'Image generation returned an invalid response. Check GOOGLE_CLOUD_PROJECT env var.' });
       return;
     }
 
     if (!apiResponse.ok) {
-      console.error('Image generation API error:', apiResponse.status, responseText.slice(0, 200));
+      log.error('generate-image', `← ${apiResponse.status} in ${Date.now() - startTime}ms`, {
+        error: result?.error?.message || responseText.slice(0, 200),
+      });
       res.status(502).json({ error: 'Image generation failed' });
       return;
     }
@@ -83,7 +90,7 @@ router.post('/', async (req: Request, res: Response) => {
     );
 
     if (!generatedPart?.inlineData?.data) {
-      console.error('No image in generation response:', JSON.stringify(result).slice(0, 500));
+      log.error('generate-image', 'No image in response', { finishReason: result.candidates?.[0]?.finishReason });
       res.status(502).json({ error: 'No image was generated. The model may have declined the request.' });
       return;
     }
@@ -112,13 +119,18 @@ router.post('/', async (req: Request, res: Response) => {
     // 7. Return signed URL
     const signedUrl = await getSignedUrl(destination);
 
+    log.info('generate-image', `← 200 in ${Date.now() - startTime}ms`, {
+      imageId,
+      sizeKb: Math.round(imageBuffer.length / 1024),
+    });
+
     res.json({
       imageId,
       imageUrl: signedUrl,
       prompt,
     });
   } catch (err: any) {
-    console.error('Generate image error:', err);
+    log.error('generate-image', `Exception: ${err.message}`);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

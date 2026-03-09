@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import http from 'http';
 import path from 'path';
@@ -8,6 +8,7 @@ import { config } from './config.js';
 import { authMiddleware } from './middleware/auth.js';
 import { errorHandler } from './middleware/errors.js';
 import { attachWebSocketServer } from './ws/live.js';
+import { log } from './utils/logger.js';
 
 import generateRouter from './routes/generate.js';
 import usersRouter from './routes/users.js';
@@ -29,6 +30,17 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '50mb' }));
+
+// Request logging — skip static files and health checks
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (!req.path.startsWith('/api')) return next();
+  const start = Date.now();
+  const userId = (req.headers['x-user-id'] as string)?.slice(0, 8);
+  res.on('finish', () => {
+    log.req(req.method, req.path, res.statusCode, Date.now() - start, userId ? { user: userId } : undefined);
+  });
+  next();
+});
 
 // Health check (no auth)
 app.get('/health', (_req, res) => {
@@ -62,5 +74,13 @@ const server = http.createServer(app);
 attachWebSocketServer(server);
 
 server.listen(config.port, () => {
-  console.log(`ArtLens AI proxy listening on port ${config.port}`);
+  log.info('server', `Listening on port ${config.port}`, {
+    project: config.projectId,
+    models: {
+      text: config.vertex.modelText,
+      textFallback: config.vertex.modelTextFallback,
+      image: config.vertex.modelImage,
+      live: config.vertex.modelLive,
+    },
+  });
 });

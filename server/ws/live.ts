@@ -2,6 +2,7 @@ import WebSocket, { WebSocketServer } from 'ws';
 import http from 'http';
 import { config } from '../config.js';
 import { getAccessToken, getLiveWebSocketUrl } from '../services/vertexai.js';
+import { log } from '../utils/logger.js';
 
 const SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -32,9 +33,11 @@ export function attachWebSocketServer(server: http.Server) {
       }
     };
 
+    const sessionStart = Date.now();
+
     // Set session timeout
     sessionTimer = setTimeout(() => {
-      console.log('Session timeout reached, closing connections');
+      log.warn('ws', 'Session timeout reached, closing');
       browserWs.close(1000, 'Session timeout');
       cleanup();
     }, SESSION_TIMEOUT_MS);
@@ -59,7 +62,9 @@ export function attachWebSocketServer(server: http.Server) {
           }
 
           if (setupMsg.setup) {
+            const requestedModel = setupMsg.setup.model;
             setupMsg.setup.model = resolveModelPath(setupMsg.setup.model);
+            log.info('ws', `→ Live session starting`, { model: requestedModel });
           }
           const modifiedMessage = JSON.stringify(setupMsg);
 
@@ -83,7 +88,8 @@ export function attachWebSocketServer(server: http.Server) {
           });
 
           upstreamWs.on('close', (code: number, reason: Buffer) => {
-            console.log(`Upstream WS closed: ${code} ${reason.toString()}`);
+            const duration = Math.round((Date.now() - sessionStart) / 1000);
+            log.info('ws', `← Live session closed after ${duration}s`, { code, reason: reason.toString() });
             if (browserWs.readyState === WebSocket.OPEN) {
               browserWs.close(1001, reason.toString() || 'Upstream closed');
             }
@@ -91,14 +97,14 @@ export function attachWebSocketServer(server: http.Server) {
           });
 
           upstreamWs.on('error', (err: Error) => {
-            console.error('Upstream WS error:', err.message);
+            log.error('ws', `Upstream error: ${err.message}`);
             if (browserWs.readyState === WebSocket.OPEN) {
               browserWs.close(1011, 'Upstream connection error');
             }
             cleanup();
           });
-        } catch (err) {
-          console.error('Failed to connect to Vertex AI:', err);
+        } catch (err: any) {
+          log.error('ws', `Failed to connect to Vertex AI: ${err.message}`);
           browserWs.close(1008, 'Authentication failed');
           cleanup();
         }
@@ -116,7 +122,7 @@ export function attachWebSocketServer(server: http.Server) {
     });
 
     browserWs.on('error', (err: Error) => {
-      console.error('Browser WS error:', err.message);
+      log.error('ws', `Browser WS error: ${err.message}`);
       cleanup();
     });
   });
