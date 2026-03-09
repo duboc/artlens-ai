@@ -54,18 +54,26 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, [initialMessage, sendMessage]);
 
-  // Auto-start voice when chat opens via scan
+  // Auto-start voice when chat opens via scan, then trigger narration
   useEffect(() => {
     if (autoStartVoice && !isConnected && !hasAutoStartedRef.current) {
       hasAutoStartedRef.current = true;
-      const timer = setTimeout(() => {
-        connect(artData, language, userContext, explanationLength).catch(err => {
+      const timer = setTimeout(async () => {
+        try {
+          await connect(artData, language, userContext, explanationLength);
+          // Immediately trigger narration — the guide starts talking like an audio guide
+          await sendTextInput(
+            `Greet ${userContext.name} warmly and begin narrating about "${artData.title}" by ${artData.artist}. ` +
+            `Start with something that hooks their attention — a surprising detail, a vivid observation, or a question. ` +
+            `Then naturally flow into what makes this piece special. Keep it conversational, as if you're standing right next to them.`
+          );
+        } catch (err) {
           console.error('Auto-start voice failed:', err);
-        });
+        }
       }, 800);
       return () => clearTimeout(timer);
     }
-  }, [autoStartVoice, isConnected, connect, artData, language, userContext, explanationLength]);
+  }, [autoStartVoice, isConnected, connect, artData, language, userContext, explanationLength, sendTextInput]);
 
   useEffect(() => {
       setOnTranscript((text, isUser, isFinal) => {
@@ -125,7 +133,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       if (!isConnected) {
           try {
              await connect(artData, language, userContext, explanationLength);
-             await new Promise(r => setTimeout(r, 500));
              await sendTextInput(topic);
           } catch(e) {
               console.error("Failed to start voice on topic", e);
@@ -279,22 +286,49 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
         {messages.length === 0 && !liveError && (
           <div className="h-full flex flex-col items-center justify-center text-secondary space-y-6 px-8 text-center">
-            <div className="w-16 h-16 rounded-full border border-[var(--primary-dim)] flex items-center justify-center">
-              <svg className="w-7 h-7 text-primary/50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-            </div>
-            <div>
-              <p className="text-sm text-[var(--text)] font-serif mb-2">{t('chat.selectTopic', language)}</p>
-              <p className="text-xs text-secondary/60">{t('chat.topicsBelow', language)}</p>
-            </div>
-            {/* Voice start button */}
-            {!isConnected && (
-              <button
-                onClick={handleVoiceStart}
-                className="px-5 py-2.5 rounded-full border border-primary/20 text-primary text-sm hover:bg-primary/10 transition-all duration-300 flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
-                <span>{t('chat.startVoice', language)}</span>
-              </button>
+            {autoStartVoice && !isConnected ? (
+              /* Connecting state — guide is preparing */
+              <>
+                <div className="w-16 h-16 rounded-full border border-primary/20 flex items-center justify-center animate-pulse">
+                  <svg className="w-7 h-7 text-primary/60" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                </div>
+                <div>
+                  <p className="text-sm text-[var(--text)] font-serif mb-2">{t('chat.guidePreparing', language)}</p>
+                </div>
+              </>
+            ) : isConnected ? (
+              /* Connected, waiting for first narration */
+              <>
+                <div className="w-16 h-16 rounded-full border border-primary/30 bg-primary/5 flex items-center justify-center">
+                  <div className="flex gap-1 items-center h-5">
+                    <span className="w-1 h-3 bg-primary/60 animate-pulse rounded-full" />
+                    <span className="w-1 h-5 bg-primary/60 animate-pulse rounded-full delay-75" />
+                    <span className="w-1 h-2.5 bg-primary/60 animate-pulse rounded-full delay-150" />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm text-[var(--text)] font-serif mb-2">{t('chat.guideNarrating', language)}</p>
+                  <p className="text-xs text-secondary/60">{t('chat.askAnything', language)}</p>
+                </div>
+              </>
+            ) : (
+              /* Default idle state — no auto-start */
+              <>
+                <div className="w-16 h-16 rounded-full border border-[var(--primary-dim)] flex items-center justify-center">
+                  <svg className="w-7 h-7 text-primary/50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+                </div>
+                <div>
+                  <p className="text-sm text-[var(--text)] font-serif mb-2">{t('chat.selectTopic', language)}</p>
+                  <p className="text-xs text-secondary/60">{t('chat.topicsBelow', language)}</p>
+                </div>
+                <button
+                  onClick={handleVoiceStart}
+                  className="px-5 py-2.5 rounded-full border border-primary/20 text-primary text-sm hover:bg-primary/10 transition-all duration-300 flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                  <span>{t('chat.startVoice', language)}</span>
+                </button>
+              </>
             )}
           </div>
         )}
@@ -330,31 +364,38 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {/* Topic Chips Bar */}
       <div className="px-4 py-2.5 bg-[var(--surface)] border-t border-[var(--primary-dim)] overflow-x-auto no-scrollbar flex gap-2 shrink-0">
-         <TopicChip label={t('chat.aboutArtist', language)} onClick={() => handleTopicClick(`Who is ${artData.artist}? Tell me about their life and work.`)} highlight />
+         <TopicChip
+           label={t('chat.tellStory', language)}
+           onClick={() => handleTopicClick(`Tell me the most fascinating story behind "${artData.title}". What drama, scandal, or surprising event is connected to this piece?`)}
+           highlight
+         />
+         <TopicChip
+           label={t('chat.aboutArtist', language)}
+           onClick={() => handleTopicClick(`Who is ${artData.artist}? Tell me about their life, their connection to this place, and what drove them to create this.`)}
+         />
+         <TopicChip
+           label={t('chat.whatsNearby', language)}
+           onClick={() => handleTopicClick(`What other works here at MNAC should I see next that connect to "${artData.title}"? What's nearby in the museum that complements this piece?`)}
+         />
          {artData.annotations?.map((ann) => (
              <TopicChip
                 key={ann.id}
                 label={ann.label}
-                onClick={() => handleTopicClick(`What can you tell me about "${ann.label}" in this artwork?`)}
+                onClick={() => handleTopicClick(`I'm looking at the "${ann.label}" area of this artwork. What's special about it? What should I notice?`)}
              />
          ))}
-
-         {artData.deepAnalysis && (
-            <>
-                <TopicChip label={t('chat.historicalContext', language)} onClick={() => handleTopicClick(`What is the historical context of "${artData.title}"?`)} />
-                <TopicChip label={t('chat.symbolism', language)} onClick={() => handleTopicClick(`What symbolism is present in "${artData.title}"?`)} />
-                {artData.deepAnalysis.curiosities?.length > 0 && (
-                     <TopicChip label={t('chat.curiosities', language)} onClick={() => handleTopicClick(`What are some curious facts about "${artData.title}"?`)} />
-                )}
-            </>
-         )}
-
-         {!artData.deepAnalysis && (
-            <>
-                <TopicChip label={t('chat.historicalContext', language)} onClick={() => handleTopicClick(`What is the historical context of "${artData.title}"?`)} />
-                <TopicChip label={t('chat.styleTechnique', language)} onClick={() => handleTopicClick(`What art style and techniques are used in "${artData.title}"?`)} />
-            </>
-         )}
+         <TopicChip
+           label={t('chat.catalanConnection', language)}
+           onClick={() => handleTopicClick(`How does "${artData.title}" connect to Catalan culture, history, or identity? What makes it significant here in Barcelona?`)}
+         />
+         <TopicChip
+           label={t('chat.hiddenDetails', language)}
+           onClick={() => handleTopicClick(`What hidden details, symbols, or secrets are in "${artData.title}" that most visitors miss? What should I look for if I look closely?`)}
+         />
+         <TopicChip
+           label={t('chat.compareStyles', language)}
+           onClick={() => handleTopicClick(`How does the style of "${artData.title}" compare to other movements represented here at MNAC? How does it fit into the broader art history on display?`)}
+         />
       </div>
 
       {/* Input */}

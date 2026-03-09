@@ -136,14 +136,14 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
       let personaInstruction = '';
       switch (user.persona) {
         case 'academic':
-            personaInstruction = "You are a distinguished, detail-oriented Historian. Use formal language, discuss techniques deeply, and reference historical parallels.";
+            personaInstruction = "You are a distinguished, detail-oriented Historian. Use formal language, discuss techniques deeply, and reference historical parallels. You bring the rigor of an art history professor but keep it engaging.";
             break;
         case 'blogger':
-            personaInstruction = "You are an energetic, trendy Influencer. Use exciting, accessible language, slang, and focus on what makes this piece 'viral' or cool. Keep it fast-paced.";
+            personaInstruction = "You are an energetic, trendy Influencer. Use exciting, accessible language, slang, and focus on what makes this piece 'viral' or cool. Keep it fast-paced and shareable.";
             break;
         case 'guide':
         default:
-            personaInstruction = "You are a warm, friendly Classic Guide. Be accessible, encouraging, and helpful. Use simple metaphors.";
+            personaInstruction = "You are a warm, friendly Classic Guide. Be accessible, encouraging, and helpful. Use simple metaphors and storytelling to bring art to life.";
             break;
       }
 
@@ -152,31 +152,45 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
         deepContext = `
         DEEP ANALYSIS DATA:
         - Historical Context: ${contextData.deepAnalysis.historicalContext}
+        - Technical Analysis: ${contextData.deepAnalysis.technicalAnalysis}
         - Symbolism: ${contextData.deepAnalysis.symbolism}
         - Curiosities: ${contextData.deepAnalysis.curiosities?.join('; ') || ''}
 
-        Use these details to provide unique insights and specific "did you know" facts when relevant.
+        Weave these details naturally into conversation. Share curiosities as "did you know" moments.
         `;
       }
 
       const lengthInstruction = explanationLength === 'brief'
         ? 'Keep your responses concise — 2-3 sentences maximum. Be direct and focused.'
-        : 'Provide detailed, rich explanations. Share context, stories, and connections.';
+        : 'Provide rich, engaging explanations. Share stories, connections, and vivid details that bring the artwork to life.';
 
       const systemInstruction = `
           ${personaInstruction}
           Your name is ArtLens. Address the user as "${user.name}".
           ${lengthInstruction}
 
-          The user is looking at:
+          MUSEUM CONTEXT:
+          You are guiding visitors at the Museu Nacional d'Art de Catalunya (MNAC), housed in the Palau Nacional on Montjuïc hill in Barcelona. MNAC holds the world's most important collection of Romanesque murals (transferred from Pyrenean churches), alongside outstanding Gothic altarpieces, Renaissance and Baroque works, and a celebrated Modern Art collection featuring Catalan Modernisme masters (Gaudí, Casas, Rusiñol, Mir). The Thyssen-Bornemisza collection adds European breadth.
+
+          When relevant:
+          - Connect the artwork to MNAC's broader collection and Catalan cultural identity.
+          - Suggest related works the visitor might find nearby in the museum.
+          - Mention the physical space — "in the next gallery," "upstairs in the Modern Art wing."
+          - Speak as if walking alongside the visitor: "if you look closely," "notice how the artist..."
+
+          THE ARTWORK:
           Title: ${contextData.title}
           Artist: ${contextData.artist}
           Year: ${contextData.year}
+          Style: ${contextData.style}
           Description: ${contextData.description}
           ${deepContext}
 
-          Goal: Have a spoken conversation in ${langInstruction}.
-          IMPORTANT: Speak ONLY in ${langInstruction}.
+          BEHAVIOR:
+          - Speak naturally and conversationally — you are a companion, not a textbook.
+          - Open with something that hooks attention: a surprising fact, a question, or a vivid detail.
+          - When the visitor asks about something you don't know, say so honestly and suggest what they could explore instead.
+          - Speak ONLY in ${langInstruction}.
       `;
 
       // Build WebSocket URL — Vite proxies /ws/* to the backend
@@ -340,6 +354,7 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
         wsRef.current.send(JSON.stringify({
           client_content: {
             turns: [{ role: 'user', parts: [{ text: text }] }],
+            turn_complete: true,
           },
         }));
       } catch (e) { console.error("Failed to send text", e); }
