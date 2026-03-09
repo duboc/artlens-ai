@@ -183,141 +183,147 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${wsProtocol}//${window.location.host}/ws/live`;
 
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
+      // Return a promise that resolves when setupComplete is received,
+      // matching the old SDK behavior where ai.live.connect() was awaitable
+      await new Promise<void>((resolve, reject) => {
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
 
-      ws.onopen = () => {
-        // Send setup message in Vertex AI format
-        // The proxy will inject the full model resource path
-        const setupMessage = {
-          setup: {
-            model: 'gemini-live-2.5-flash-native-audio',
-            generation_config: {
-              response_modalities: ['AUDIO'],
-              speech_config: {
-                voice_config: {
-                  prebuilt_voice_config: { voice_name: 'Kore' },
+        ws.onopen = () => {
+          const setupMessage = {
+            setup: {
+              model: 'gemini-live-2.5-flash-native-audio',
+              generation_config: {
+                response_modalities: ['AUDIO'],
+                speech_config: {
+                  voice_config: {
+                    prebuilt_voice_config: { voice_name: 'Kore' },
+                  },
                 },
               },
+              system_instruction: {
+                parts: [{ text: systemInstruction }],
+              },
+              input_audio_transcription: {},
+              output_audio_transcription: {},
             },
-            system_instruction: {
-              parts: [{ text: systemInstruction }],
-            },
-            input_audio_transcription: {},
-            output_audio_transcription: {},
-          },
-        };
-        ws.send(JSON.stringify(setupMessage));
-      };
-
-      ws.onmessage = async (event) => {
-        let msg: any;
-        try {
-          msg = JSON.parse(typeof event.data === 'string' ? event.data : await event.data.text());
-        } catch {
-          return;
-        }
-
-        // setupComplete → mark as connected and start audio pipeline
-        if (msg.setupComplete !== undefined) {
-          console.log('Live Session Connected');
-          setIsConnected(true);
-
-          if (!inputContextRef.current) return;
-          const ctx = inputContextRef.current;
-          const source = ctx.createMediaStreamSource(stream);
-          const processor = ctx.createScriptProcessor(4096, 1, 1);
-
-          processor.onaudioprocess = (e) => {
-            if (audioStreamRef.current?.getAudioTracks()[0]?.enabled) {
-              const inputData = e.inputBuffer.getChannelData(0);
-              const blob: AudioBlob = createPcmBlob(inputData);
-              if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                wsRef.current.send(JSON.stringify({
-                  realtime_input: {
-                    media_chunks: [{ mime_type: blob.mimeType, data: blob.data }],
-                  },
-                }));
-              }
-            }
           };
+          ws.send(JSON.stringify(setupMessage));
+        };
 
-          source.connect(processor);
-          processor.connect(ctx.destination);
-          sourceNodeRef.current = source;
-          scriptProcessorRef.current = processor;
-          return;
-        }
+        ws.onmessage = async (event) => {
+          let msg: any;
+          try {
+            msg = JSON.parse(typeof event.data === 'string' ? event.data : await event.data.text());
+          } catch {
+            return;
+          }
 
-        // Handle server content messages
-        const serverContent = msg.serverContent;
-        if (!serverContent) return;
+          // setupComplete → mark as connected, start audio pipeline, resolve promise
+          if (msg.setupComplete !== undefined) {
+            console.log('Live Session Connected');
+            setIsConnected(true);
 
-        if (serverContent.outputTranscription?.text) {
-          currentModelTranscriptRef.current += serverContent.outputTranscription.text;
-          if (onTranscriptRef.current) onTranscriptRef.current(currentModelTranscriptRef.current, false, false);
-        }
+            if (inputContextRef.current) {
+              const ctx = inputContextRef.current;
+              const source = ctx.createMediaStreamSource(stream);
+              const processor = ctx.createScriptProcessor(4096, 1, 1);
 
-        if (serverContent.inputTranscription?.text) {
-          currentUserTranscriptRef.current += serverContent.inputTranscription.text;
-          if (onTranscriptRef.current) onTranscriptRef.current(currentUserTranscriptRef.current, true, false);
-        }
+              processor.onaudioprocess = (e) => {
+                if (audioStreamRef.current?.getAudioTracks()[0]?.enabled) {
+                  const inputData = e.inputBuffer.getChannelData(0);
+                  const blob: AudioBlob = createPcmBlob(inputData);
+                  if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                    wsRef.current.send(JSON.stringify({
+                      realtime_input: {
+                        media_chunks: [{ mime_type: blob.mimeType, data: blob.data }],
+                      },
+                    }));
+                  }
+                }
+              };
 
-        if (serverContent.turnComplete) {
-          if (currentModelTranscriptRef.current && onTranscriptRef.current) {
-            onTranscriptRef.current(currentModelTranscriptRef.current, false, true);
+              source.connect(processor);
+              processor.connect(ctx.destination);
+              sourceNodeRef.current = source;
+              scriptProcessorRef.current = processor;
+            }
+
+            resolve();
+            return;
+          }
+
+          // Handle server content messages
+          const serverContent = msg.serverContent;
+          if (!serverContent) return;
+
+          if (serverContent.outputTranscription?.text) {
+            currentModelTranscriptRef.current += serverContent.outputTranscription.text;
+            if (onTranscriptRef.current) onTranscriptRef.current(currentModelTranscriptRef.current, false, false);
+          }
+
+          if (serverContent.inputTranscription?.text) {
+            currentUserTranscriptRef.current += serverContent.inputTranscription.text;
+            if (onTranscriptRef.current) onTranscriptRef.current(currentUserTranscriptRef.current, true, false);
+          }
+
+          if (serverContent.turnComplete) {
+            if (currentModelTranscriptRef.current && onTranscriptRef.current) {
+              onTranscriptRef.current(currentModelTranscriptRef.current, false, true);
+              currentModelTranscriptRef.current = '';
+            }
+            if (currentUserTranscriptRef.current && onTranscriptRef.current) {
+              onTranscriptRef.current(currentUserTranscriptRef.current, true, true);
+              currentUserTranscriptRef.current = '';
+            }
+          }
+
+          const base64Audio = serverContent.modelTurn?.parts?.[0]?.inlineData?.data;
+          if (base64Audio && outputContextRef.current) {
+            const ctx = outputContextRef.current;
+            setIsSpeaking(true);
+            try {
+              const audioData = base64ToUint8Array(base64Audio);
+              const audioBuffer = await decodeAudioData(audioData, ctx, 24000, 1);
+              const currentTime = ctx.currentTime;
+              if (nextStartTimeRef.current < currentTime) nextStartTimeRef.current = currentTime;
+
+              const source = ctx.createBufferSource();
+              source.buffer = audioBuffer;
+              source.connect(ctx.destination);
+              source.start(nextStartTimeRef.current);
+              nextStartTimeRef.current += audioBuffer.duration;
+
+              scheduledSourcesRef.current.add(source);
+              source.onended = () => {
+                scheduledSourcesRef.current.delete(source);
+                if (scheduledSourcesRef.current.size === 0) setIsSpeaking(false);
+              };
+            } catch (e) { console.error("Audio Decode Error", e); }
+          }
+
+          if (serverContent.interrupted) {
+            scheduledSourcesRef.current.forEach(s => s.stop());
+            scheduledSourcesRef.current.clear();
+            nextStartTimeRef.current = 0;
+            setIsSpeaking(false);
             currentModelTranscriptRef.current = '';
           }
-          if (currentUserTranscriptRef.current && onTranscriptRef.current) {
-            onTranscriptRef.current(currentUserTranscriptRef.current, true, true);
-            currentUserTranscriptRef.current = '';
-          }
-        }
+        };
 
-        const base64Audio = serverContent.modelTurn?.parts?.[0]?.inlineData?.data;
-        if (base64Audio && outputContextRef.current) {
-          const ctx = outputContextRef.current;
-          setIsSpeaking(true);
-          try {
-            const audioData = base64ToUint8Array(base64Audio);
-            const audioBuffer = await decodeAudioData(audioData, ctx, 24000, 1);
-            const currentTime = ctx.currentTime;
-            if (nextStartTimeRef.current < currentTime) nextStartTimeRef.current = currentTime;
+        ws.onclose = (_event) => {
+          console.log('Live Session Closed');
+          setIsConnected(false);
+          cleanup();
+        };
 
-            const source = ctx.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(ctx.destination);
-            source.start(nextStartTimeRef.current);
-            nextStartTimeRef.current += audioBuffer.duration;
-
-            scheduledSourcesRef.current.add(source);
-            source.onended = () => {
-              scheduledSourcesRef.current.delete(source);
-              if (scheduledSourcesRef.current.size === 0) setIsSpeaking(false);
-            };
-          } catch (e) { console.error("Audio Decode Error", e); }
-        }
-
-        if (serverContent.interrupted) {
-          scheduledSourcesRef.current.forEach(s => s.stop());
-          scheduledSourcesRef.current.clear();
-          nextStartTimeRef.current = 0;
-          setIsSpeaking(false);
-          currentModelTranscriptRef.current = '';
-        }
-      };
-
-      ws.onclose = () => {
-        console.log('Live Session Closed');
-        setIsConnected(false);
-        cleanup();
-      };
-
-      ws.onerror = (err) => {
-        console.error('Live Session Error', err);
-        setError("Connection error");
-        cleanup();
-      };
+        ws.onerror = (err) => {
+          console.error('Live Session Error', err);
+          setError("Connection error");
+          cleanup();
+          reject(new Error("WebSocket connection failed"));
+        };
+      });
 
     } catch (err: any) {
       console.error("Failed to connect", err);
