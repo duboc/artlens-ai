@@ -35,7 +35,10 @@ export function getGenerateUrl(model?: string): string {
 export function getImageGenerateUrl(): string {
   const region = config.vertex.regionImage;
   const model = config.vertex.modelImage;
-  return `https://${region}-aiplatform.googleapis.com/v1/projects/${config.projectId}/locations/${region}/publishers/google/models/${model}:generateContent`;
+  const host = region === 'global'
+    ? 'aiplatform.googleapis.com'
+    : `${region}-aiplatform.googleapis.com`;
+  return `https://${host}/v1/projects/${config.projectId}/locations/${region}/publishers/google/models/${model}:generateContent`;
 }
 
 export function getLiveWebSocketUrl(): string {

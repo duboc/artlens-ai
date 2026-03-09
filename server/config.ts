@@ -6,10 +6,11 @@ export const config = {
   vertex: {
     regionText: process.env.VERTEX_REGION_TEXT || 'global',
     regionLive: process.env.VERTEX_REGION_LIVE || 'us-central1',
-    modelText: process.env.MODEL_TEXT || 'gemini-3-flash-preview',
+    modelText: process.env.MODEL_TEXT || 'gemini-3.1-flash-lite-preview',
+    modelTextFallback: process.env.MODEL_TEXT_FALLBACK || 'gemini-3-flash-preview',
     modelLive: process.env.MODEL_LIVE || 'gemini-live-2.5-flash-native-audio',
-    modelImage: process.env.MODEL_IMAGE || 'gemini-2.0-flash-exp',
-    regionImage: process.env.VERTEX_REGION_IMAGE || 'us-central1',
+    modelImage: process.env.MODEL_IMAGE || 'gemini-3.1-flash-image-preview',
+    regionImage: process.env.VERTEX_REGION_IMAGE || 'global',
   },
   allowedOrigins: (process.env.ALLOWED_ORIGINS || 'http://localhost:3000').split(','),
 };
