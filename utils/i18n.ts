@@ -210,6 +210,21 @@ const translations: Record<string, Record<Language, string>> = {
     pt: 'Escolha entre os tópicos abaixo ou digite o seu',
     es: 'Elige entre los temas de abajo o escribe el tuyo',
   },
+  'chat.guidePreparing': {
+    en: 'Your guide is preparing...',
+    pt: 'Seu guia está se preparando...',
+    es: 'Tu guía se está preparando...',
+  },
+  'chat.guideNarrating': {
+    en: 'Your guide is speaking',
+    pt: 'Seu guia está falando',
+    es: 'Tu guía está hablando',
+  },
+  'chat.askAnything': {
+    en: 'Unmute to ask questions or tap a topic below',
+    pt: 'Ative o microfone para perguntar ou toque um tópico',
+    es: 'Activa el micrófono para preguntar o toca un tema',
+  },
   'chat.voiceActive': {
     en: 'Voice Active',
     pt: 'Voz Ativa',
@@ -236,6 +251,31 @@ const translations: Record<string, Record<Language, string>> = {
     en: 'About the Artist',
     pt: 'Sobre o Artista',
     es: 'Sobre el Artista',
+  },
+  'chat.tellStory': {
+    en: 'Tell me a story',
+    pt: 'Conte uma história',
+    es: 'Cuéntame una historia',
+  },
+  'chat.whatsNearby': {
+    en: "What's nearby?",
+    pt: 'O que tem por perto?',
+    es: '¿Qué hay cerca?',
+  },
+  'chat.catalanConnection': {
+    en: 'Catalan Connection',
+    pt: 'Conexão Catalã',
+    es: 'Conexión Catalana',
+  },
+  'chat.compareStyles': {
+    en: 'Compare Styles',
+    pt: 'Comparar Estilos',
+    es: 'Comparar Estilos',
+  },
+  'chat.hiddenDetails': {
+    en: 'Hidden Details',
+    pt: 'Detalhes Ocultos',
+    es: 'Detalles Ocultos',
   },
   'chat.historicalContext': {
     en: 'Historical Context',
