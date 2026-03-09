@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { getAccessToken, getImageGenerateUrl } from '../services/vertexai';
-import { downloadBuffer, uploadBuffer, getSignedUrl } from '../services/storage';
+import { downloadBuffer, uploadBuffer } from '../services/storage';
 import { getFirestore, FieldValue } from '../services/firestore';
 import { log } from '../utils/logger';
 
@@ -116,8 +116,8 @@ router.post('/', async (req: Request, res: Response) => {
         createdAt: FieldValue.serverTimestamp(),
       });
 
-    // 7. Return signed URL
-    const signedUrl = await getSignedUrl(destination);
+    // 7. Return proxy URL (signed URLs require service-account credentials)
+    const proxyUrl = `/api/images/${destination}`;
 
     log.info('generate-image', `← 200 in ${Date.now() - startTime}ms`, {
       imageId,
@@ -126,7 +126,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     res.json({
       imageId,
-      imageUrl: signedUrl,
+      imageUrl: proxyUrl,
       prompt,
     });
   } catch (err: any) {
@@ -146,25 +146,17 @@ router.get('/', async (req: Request, res: Response) => {
       .orderBy('createdAt', 'desc')
       .get();
 
-    const images = await Promise.all(
-      snapshot.docs.map(async (doc) => {
-        const data = doc.data();
-        let imageUrl: string;
-        try {
-          imageUrl = await getSignedUrl(data.imageUrl);
-        } catch {
-          imageUrl = '';
-        }
-        return {
-          id: doc.id,
-          artworkTitle: data.artworkTitle || '',
-          artworkArtist: data.artworkArtist || '',
-          imageUrl,
-          prompt: data.prompt || '',
-          createdAt: data.createdAt?.toMillis?.() || 0,
-        };
-      })
-    );
+    const images = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        artworkTitle: data.artworkTitle || '',
+        artworkArtist: data.artworkArtist || '',
+        imageUrl: data.imageUrl ? `/api/images/${data.imageUrl}` : '',
+        prompt: data.prompt || '',
+        createdAt: data.createdAt?.toMillis?.() || 0,
+      };
+    });
 
     res.json({ images });
   } catch (err: any) {

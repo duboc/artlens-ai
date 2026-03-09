@@ -94,6 +94,10 @@ export async function apiGet<T = any>(path: string): Promise<T> {
   return res.json();
 }
 
+export async function apiFetch(path: string): Promise<Response> {
+  return requestWithRetry('GET', path);
+}
+
 export async function apiPatch<T = any>(path: string, body: unknown): Promise<T> {
   const res = await requestWithRetry('PATCH', path, body);
 

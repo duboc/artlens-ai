@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
-import { uploadBuffer, getSignedUrl } from '../services/storage';
+import { uploadBuffer, streamToResponse } from '../services/storage';
+import { authMiddleware } from '../middleware/auth';
 
 const router = Router();
 
@@ -20,8 +21,8 @@ const upload = multer({
   },
 });
 
-// POST /api/images/upload — Upload an image
-router.post('/upload', upload.single('file'), async (req: Request, res: Response) => {
+// POST /api/images/upload — Upload an image (requires auth)
+router.post('/upload', authMiddleware, upload.single('file'), async (req: Request, res: Response) => {
   try {
     const file = req.file;
     const { type, scanId } = req.body;
@@ -75,25 +76,23 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
   }
 });
 
-// GET /api/images/* — Serve image via signed URL redirect
+// GET /api/images/* — Stream image directly from GCS (no auth — paths contain UUIDs)
 router.get('/*', async (req: Request, res: Response) => {
   try {
     const path = req.params[0];
-    const userId = req.userId!;
 
     if (!path) {
       res.status(400).json({ error: 'Missing image path' });
       return;
     }
 
-    // Users can only access their own images
-    if (!path.startsWith(`users/${userId}/`)) {
+    // Validate path format: must be users/{uuid}/...
+    if (!path.startsWith('users/')) {
       res.status(403).json({ error: 'Access denied' });
       return;
     }
 
-    const url = await getSignedUrl(path);
-    res.redirect(302, url);
+    await streamToResponse(path, res);
   } catch (err: any) {
     if (err.message === 'File not found') {
       res.status(404).json({ error: 'Image not found' });

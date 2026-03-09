@@ -61,3 +61,23 @@ export async function getSignedUrl(path: string): Promise<string> {
 
   return url;
 }
+
+// Stream a file from GCS to an HTTP response (works with any ADC credential)
+export async function streamToResponse(
+  path: string,
+  res: import('express').Response,
+): Promise<void> {
+  const bucket = getBucket();
+  const file = bucket.file(path);
+
+  const [exists] = await file.exists();
+  if (!exists) {
+    throw new Error('File not found');
+  }
+
+  const [metadata] = await file.getMetadata();
+  res.set('Content-Type', metadata.contentType || 'application/octet-stream');
+  res.set('Cache-Control', 'private, max-age=3600');
+
+  file.createReadStream().pipe(res);
+}
