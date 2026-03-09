@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Language, GeneratedImage } from '../types';
-import { apiGet } from '../services/apiClient';
+import { apiGet, apiFetch } from '../services/apiClient';
 import { t } from '../utils/i18n';
 
 interface GalleryProps {
@@ -28,7 +28,7 @@ export const Gallery: React.FC<GalleryProps> = ({ isOpen, language, onClose }) =
 
   const handleDownload = async (image: GeneratedImage) => {
     try {
-      const response = await fetch(image.imageUrl);
+      const response = await apiFetch(image.imageUrl);
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -45,7 +45,7 @@ export const Gallery: React.FC<GalleryProps> = ({ isOpen, language, onClose }) =
 
   const handleShare = async (image: GeneratedImage) => {
     try {
-      const response = await fetch(image.imageUrl);
+      const response = await apiFetch(image.imageUrl);
       const blob = await response.blob();
       const file = new File([blob], 'artlens-portrait.png', { type: 'image/png' });
       if (navigator.share && navigator.canShare?.({ files: [file] })) {

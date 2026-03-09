@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { IdentifyResponse, Language, GeneratedImage } from '../types';
-import { apiPost } from '../services/apiClient';
+import { apiPost, apiFetch } from '../services/apiClient';
 import { t } from '../utils/i18n';
 
 interface GenerateModalProps {
@@ -118,7 +118,7 @@ export const GenerateModal: React.FC<GenerateModalProps> = ({
   const handleDownload = async () => {
     if (!imageUrl) return;
     try {
-      const response = await fetch(imageUrl);
+      const response = await apiFetch(imageUrl);
       const blob = await response.blob();
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -137,7 +137,7 @@ export const GenerateModal: React.FC<GenerateModalProps> = ({
   const handleShare = async () => {
     if (!imageUrl) return;
     try {
-      const response = await fetch(imageUrl);
+      const response = await apiFetch(imageUrl);
       const blob = await response.blob();
       const file = new File([blob], `artlens-portrait.png`, { type: 'image/png' });
       if (navigator.share && navigator.canShare?.({ files: [file] })) {

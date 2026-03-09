@@ -52,9 +52,12 @@ app.get('/health', (_req, res) => {
 // GET /api/users/:userId/scans — auth handled inside the router
 app.use('/api/users', usersRouter);
 
+// Image streaming — no auth required (paths contain UUIDs as access tokens)
+// Upload still requires auth (POST handler checks userId)
+app.use('/api/images', imagesRouter);
+
 // All remaining API routes require auth
 app.use('/api/generate', authMiddleware, generateRouter);
-app.use('/api/images', authMiddleware, imagesRouter);
 app.use('/api/scans', authMiddleware, scansRouter);
 app.use('/api/scans', authMiddleware, chatsRouter);
 app.use('/api/generate-image', authMiddleware, generateImageRouter);
