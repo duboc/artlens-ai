@@ -69,7 +69,7 @@ Three sequential screens, all state in `App.tsx`, persisted to localStorage:
 
 When the user scans artwork, `App.tsx` orchestrates:
 1. **`identifyArtwork()`** — two parallel `POST /api/generate` calls:
-   - Search-grounded (with `googleSearchRetrieval` tool) → title, artist, year, country, funFact
+   - Search-grounded (with `google_search` tool) → title, artist, year, country, funFact
    - Vision (with `responseMimeType: 'application/json'`) → style, description, annotations with bounding boxes
 2. **`getDeepArtworkAnalysis()`** — fires after step 1 (async, non-blocking) → historicalContext, technicalAnalysis, symbolism, curiosities[]
 

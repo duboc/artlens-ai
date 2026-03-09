@@ -1,28 +1,28 @@
 # Implementation Roadmap — ArtLens AI
 
 **Deadline:** March 6, 2026 (code complete) | **Event:** March 18, 2026 (MNAC)
-**Today:** February 26, 2026 | **Working days left:** ~6
+**Today:** March 9, 2026 | **Status:** Code Complete & Refined
 
 ---
 
 ## Current State
 
-The app is a working prototype: camera → scan → AI analysis → voice/text chat. It runs entirely client-side with a Gemini API key and localStorage. The recent UI redesign gave it a "Gallery Noir" theme (gold/serif). That theme will be replaced with the Google-branded palette per meeting decisions.
+The app is fully functional and migrated to Vertex AI using a backend proxy. All features are complete, including image generation and the virtual gallery. The app has been upgraded to Gemini 3.0 preview models for enhanced performance and search grounding.
 
 | Area | Status |
 |------|--------|
-| Camera + scan pipeline | Working |
-| AI analysis (Gemini) | Working (API key auth) |
-| Voice chat (Live API) | Working (API key auth) |
-| Text chat | Working |
-| History | Working (localStorage only) |
-| Annotations | Working |
+| Camera + scan pipeline | Complete (Refined) |
+| AI analysis (Gemini 3) | Complete (Vertex AI ADC) |
+| Voice chat (Live API) | Complete (Vertex AI ADC) |
+| Text chat (Gemini 3) | Complete (Vertex AI ADC) |
+| History | Complete (localStorage + Firestore) |
+| Annotations | Complete (Vision-based) |
 | Font | Google Sans + Google Sans Text |
 | Colors | Black + Google Blue `#4285F4` |
-| Personas | Classic Guide / Historian / Influencer (display labels) |
-| Onboarding | 3-step wizard: name+email → selfie → persona |
+| Personas | Classic Guide / Historian / Influencer |
+| Onboarding | 3-step wizard (name+email → selfie → persona) |
 | Backend proxy | Complete (Express + WebSocket, Vertex AI ADC) |
-| Firestore/Storage | Wired (users, scans, images) |
+| Firestore/Storage | Complete (users, scans, images, generated portraits) |
 | Core interaction flow | Complete (auto-chat, narration, persona switch, length toggle) |
 | Image generation | Complete (Gemini `gemini-2.0-flash-exp`, via backend) |
 | Virtual gallery | Complete (grid view + detail overlay + download/share) |

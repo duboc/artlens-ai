@@ -468,7 +468,7 @@ projects/my-project/locations/us-central1/publishers/google/models/gemini-live-2
 
 ## Google Search Grounding in Vertex AI
 
-The search grounding tool syntax changes slightly for Vertex AI:
+The search grounding tool syntax for Gemini 2.0+ models:
 
 **Before (Gemini API):**
 ```typescript
@@ -477,19 +477,10 @@ config: { tools: [{ googleSearch: {} }] }
 
 **After (Vertex AI):**
 ```typescript
-tools: [{ googleSearchRetrieval: {} }]
-// or with dynamic retrieval config:
-tools: [{
-  googleSearchRetrieval: {
-    dynamicRetrievalConfig: {
-      mode: 'MODE_DYNAMIC',
-      dynamicThreshold: 0.3,
-    }
-  }
-}]
+tools: [{ google_search: {} }]
 ```
 
-This affects `geminiService.ts:148` (the identification call).
+This affects `geminiService.ts` (the identification call).
 
 ---
 
