@@ -21,6 +21,17 @@ interface UseGeminiLiveReturn {
   setOnTranscript: (callback: (text: string, isUser: boolean, isFinal: boolean) => void) => void;
 }
 
+// Pre-warm AudioContexts from a user gesture so they start in 'running' state.
+// Call this from a click handler BEFORE connect() runs in a useEffect.
+let preWarmedInput: AudioContext | null = null;
+let preWarmedOutput: AudioContext | null = null;
+
+export function preWarmAudio() {
+  preWarmedInput = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+  preWarmedOutput = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+  console.log('[audio] Pre-warmed AudioContexts:', preWarmedInput.state, preWarmedOutput.state);
+}
+
 export const useGeminiLive = (): UseGeminiLiveReturn => {
   const [isConnected, setIsConnected] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -116,8 +127,18 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
   const connect = useCallback(async (contextData: IdentifyResponse, language: Language, user: UserContext, explanationLength: 'brief' | 'detailed' = 'detailed') => {
     setError(null);
     try {
-      inputContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-      outputContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      // Use pre-warmed AudioContexts if available (created in user gesture context)
+      if (preWarmedInput && preWarmedOutput) {
+        inputContextRef.current = preWarmedInput;
+        outputContextRef.current = preWarmedOutput;
+        console.log('[audio] Using pre-warmed contexts:', preWarmedInput.state, preWarmedOutput.state);
+        preWarmedInput = null;
+        preWarmedOutput = null;
+      } else {
+        inputContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+        outputContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+        console.log('[audio] Created new contexts:', inputContextRef.current.state, outputContextRef.current.state);
+      }
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioStreamRef.current = stream;
@@ -193,6 +214,11 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
           - Speak ONLY in ${langInstruction}.
       `;
 
+      // Capture contexts locally so the onmessage closure isn't affected by
+      // cleanup() nullifying the refs (e.g. React StrictMode double-mount).
+      const localInputCtx = inputContextRef.current;
+      const localOutputCtx = outputContextRef.current;
+
       // Build WebSocket URL — Vite proxies /ws/* to the backend
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${wsProtocol}//${window.location.host}/ws/live`;
@@ -235,20 +261,19 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
 
           // setupComplete → mark as connected, start audio pipeline, resolve promise
           if (msg.setupComplete !== undefined) {
-            console.log('Live Session Connected');
+            console.log('[audio] Live Session Connected, outputCtx:', localOutputCtx.state);
             setIsConnected(true);
 
-            if (inputContextRef.current) {
-              const ctx = inputContextRef.current;
-              const source = ctx.createMediaStreamSource(stream);
-              const processor = ctx.createScriptProcessor(4096, 1, 1);
+            if (localInputCtx) {
+              const source = localInputCtx.createMediaStreamSource(stream);
+              const processor = localInputCtx.createScriptProcessor(4096, 1, 1);
 
               processor.onaudioprocess = (e) => {
                 if (audioStreamRef.current?.getAudioTracks()[0]?.enabled) {
                   const inputData = e.inputBuffer.getChannelData(0);
                   const blob: AudioBlob = createPcmBlob(inputData);
-                  if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                    wsRef.current.send(JSON.stringify({
+                  if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
                       realtime_input: {
                         media_chunks: [{ mime_type: blob.mimeType, data: blob.data }],
                       },
@@ -258,7 +283,7 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
               };
 
               source.connect(processor);
-              processor.connect(ctx.destination);
+              processor.connect(localInputCtx.destination);
               sourceNodeRef.current = source;
               scriptProcessorRef.current = processor;
             }
@@ -292,19 +317,24 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
             }
           }
 
-          const base64Audio = serverContent.modelTurn?.parts?.[0]?.inlineData?.data;
-          if (base64Audio && outputContextRef.current) {
-            const ctx = outputContextRef.current;
+          // Find audio part (may not be the first part)
+          const audioPart = serverContent.modelTurn?.parts?.find((p: any) => p.inlineData?.data);
+          const base64Audio = audioPart?.inlineData?.data;
+          if (base64Audio && localOutputCtx) {
+            // Resume suspended AudioContext if needed
+            if (localOutputCtx.state === 'suspended') {
+              try { await localOutputCtx.resume(); } catch {}
+            }
             setIsSpeaking(true);
             try {
               const audioData = base64ToUint8Array(base64Audio);
-              const audioBuffer = await decodeAudioData(audioData, ctx, 24000, 1);
-              const currentTime = ctx.currentTime;
+              const audioBuffer = await decodeAudioData(audioData, localOutputCtx, 24000, 1);
+              const currentTime = localOutputCtx.currentTime;
               if (nextStartTimeRef.current < currentTime) nextStartTimeRef.current = currentTime;
 
-              const source = ctx.createBufferSource();
+              const source = localOutputCtx.createBufferSource();
               source.buffer = audioBuffer;
-              source.connect(ctx.destination);
+              source.connect(localOutputCtx.destination);
               source.start(nextStartTimeRef.current);
               nextStartTimeRef.current += audioBuffer.duration;
 
@@ -313,7 +343,7 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
                 scheduledSourcesRef.current.delete(source);
                 if (scheduledSourcesRef.current.size === 0) setIsSpeaking(false);
               };
-            } catch (e) { console.error("Audio Decode Error", e); }
+            } catch (e) { console.error("[audio] Decode/play error:", e); }
           }
 
           if (serverContent.interrupted) {

@@ -9,16 +9,33 @@ interface OnboardingFormProps {
   onBack: () => void;
 }
 
-type Step = 1 | 2 | 3;
+interface FoundUser {
+  userId: string;
+  name: string;
+  persona: Persona;
+  selfieUrl: string;
+}
+
+type Step = 'email' | 'welcome-back' | 'name' | 'selfie' | 'persona';
+
+const STEP_ORDER: Step[] = ['email', 'name', 'selfie', 'persona'];
+
+function stepNumber(step: Step): number {
+  if (step === 'welcome-back') return 1;
+  const idx = STEP_ORDER.indexOf(step);
+  return idx >= 0 ? idx + 1 : 1;
+}
 
 export const OnboardingForm: React.FC<OnboardingFormProps> = ({ language, onComplete, onBack }) => {
-  const [step, setStep] = useState<Step>(1);
-  const [name, setName] = useState('');
+  const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
   const [selectedPersona, setSelectedPersona] = useState<Persona>('guide');
   const [selfieDataUrl, setSelfieDataUrl] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [foundUser, setFoundUser] = useState<FoundUser | null>(null);
 
   // Selfie camera refs
   const selfieVideoRef = useRef<HTMLVideoElement>(null);
@@ -51,13 +68,13 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({ language, onComp
     setIsCameraReady(false);
   }, []);
 
-  // Start/stop camera when entering/leaving step 2
+  // Start/stop camera when entering/leaving selfie step
   useEffect(() => {
-    if (step === 2 && !selfieDataUrl) {
+    if (step === 'selfie' && !selfieDataUrl) {
       startSelfieCamera();
     }
     return () => {
-      if (step !== 2) stopSelfieCamera();
+      if (step !== 'selfie') stopSelfieCamera();
     };
   }, [step, selfieDataUrl, startSelfieCamera, stopSelfieCamera]);
 
@@ -70,7 +87,6 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({ language, onComp
     canvas.height = size;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    // Center crop to square
     const sx = (video.videoWidth - size) / 2;
     const sy = (video.videoHeight - size) / 2;
     ctx.drawImage(video, sx, sy, size, size, 0, 0, size, size);
@@ -83,12 +99,65 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({ language, onComp
     startSelfieCamera();
   };
 
-  const handleStep1Next = () => {
-    if (name.trim() && email.trim()) setStep(2);
+  // Step 1: Email lookup
+  const handleEmailNext = async () => {
+    if (!email.trim()) return;
+    setIsLookingUp(true);
+    setSubmitError(null);
+    try {
+      const res = await fetch(`/api/users/lookup?email=${encodeURIComponent(email.trim())}`);
+      const data = await res.json();
+      if (data.found) {
+        setFoundUser(data);
+        setName(data.name);
+        setSelectedPersona(data.persona || 'guide');
+        setStep('welcome-back');
+      } else {
+        setFoundUser(null);
+        setStep('name');
+      }
+    } catch {
+      // Lookup failed — proceed as new user
+      setFoundUser(null);
+      setStep('name');
+    } finally {
+      setIsLookingUp(false);
+    }
   };
 
-  const handleStep2Next = () => {
-    setStep(3);
+  // Returning user: continue with existing profile
+  const handleContinueAsReturning = async () => {
+    if (!foundUser) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      // Upsert to get the userId and update lastActiveAt
+      const { userId } = await apiPost<{ userId: string }>('/api/users', {
+        name: foundUser.name,
+        email: email.trim(),
+        persona: foundUser.persona,
+        language,
+      });
+      setUserId(userId);
+      onComplete({
+        name: foundUser.name,
+        email: email.trim(),
+        persona: foundUser.persona,
+        selfieUrl: foundUser.selfieUrl || undefined,
+      });
+    } catch (err: any) {
+      setSubmitError(err.message || 'Failed to sign in');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Returning user: not them, start fresh
+  const handleNotYou = () => {
+    setFoundUser(null);
+    setEmail('');
+    setName('');
+    setStep('email');
   };
 
   const handleSubmit = async () => {
@@ -96,7 +165,6 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({ language, onComp
     setSubmitError(null);
 
     try {
-      // 1. Create user on backend
       const { userId } = await apiPost<{ userId: string }>('/api/users', {
         name: name.trim(),
         email: email.trim(),
@@ -105,14 +173,12 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({ language, onComp
       });
       setUserId(userId);
 
-      // 2. Upload selfie if captured
       if (selfieDataUrl) {
         try {
           const blob = await fetch(selfieDataUrl).then(r => r.blob());
           const formData = new FormData();
           formData.append('file', blob, 'selfie.jpg');
           formData.append('type', 'selfie');
-
           await fetch('/api/images/upload', {
             method: 'POST',
             headers: { 'X-User-Id': userId },
@@ -123,47 +189,35 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({ language, onComp
         }
       }
 
-      // 3. Complete onboarding
       onComplete({ name: name.trim(), email: email.trim(), persona: selectedPersona, selfieUrl: selfieDataUrl ? `users/${userId}/selfie.jpg` : undefined });
     } catch (err: any) {
       console.error('Onboarding submit error:', err);
       setSubmitError(err.message || 'Failed to create account');
-      // Fallback: complete locally even if backend fails
-      onComplete({ name: name.trim(), email: email.trim(), persona: selectedPersona, selfieUrl: selfieDataUrl ? 'local' : undefined });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleSkip = async () => {
-    setIsSubmitting(true);
-    try {
-      const { userId } = await apiPost<{ userId: string }>('/api/users', {
-        name: 'Guest',
-        email: 'guest@artlens.ai',
-        persona: 'guide',
-        language,
-      });
-      setUserId(userId);
-    } catch {
-      // Fallback: continue without backend
+  const handleBack = () => {
+    if (step === 'email') {
+      onBack();
+    } else if (step === 'welcome-back') {
+      setStep('email');
+    } else if (step === 'name') {
+      setStep('email');
+    } else if (step === 'selfie') {
+      stopSelfieCamera();
+      setStep('name');
+    } else if (step === 'persona') {
+      setStep('selfie');
     }
-    onComplete({ name: 'Guest', email: 'guest@artlens.ai', persona: 'guide' });
-    setIsSubmitting(false);
   };
 
-  const handleBack = () => {
-    if (step === 1) {
-      onBack();
-    } else {
-      if (step === 2) stopSelfieCamera();
-      setStep((step - 1) as Step);
-    }
-  };
+  const totalSteps = 4;
+  const currentStep = stepNumber(step);
 
   return (
     <div className="absolute inset-0 z-50 bg-[var(--bg)] flex flex-col px-6 pt-safe overflow-y-auto no-scrollbar pb-safe">
-      {/* Hidden canvas for selfie capture */}
       <canvas ref={selfieCanvasRef} className="hidden" />
 
       {/* Back button + Step indicator */}
@@ -178,17 +232,17 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({ language, onComp
           <span className="text-sm">{t('onboarding.back', language)}</span>
         </button>
         <span className="text-xs font-mono text-secondary/50">
-          {step} {t('onboarding.stepOf', language)} 3
+          {currentStep} {t('onboarding.stepOf', language)} {totalSteps}
         </span>
       </div>
 
       {/* Step Progress Bar */}
       <div className="flex gap-2 mt-2 mb-6">
-        {[1, 2, 3].map(s => (
+        {Array.from({ length: totalSteps }, (_, i) => (
           <div
-            key={s}
+            key={i}
             className={`h-1 flex-1 rounded-full transition-all duration-500 ${
-              s <= step ? 'bg-primary' : 'bg-[var(--primary-dim)]'
+              i < currentStep ? 'bg-primary' : 'bg-[var(--primary-dim)]'
             }`}
           />
         ))}
@@ -196,9 +250,85 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({ language, onComp
 
       <div className="max-w-sm mx-auto w-full flex-1 flex flex-col justify-center">
 
-        {/* Step 1: Name + Email */}
-        {step === 1 && (
-          <div className="space-y-10 opacity-0 animate-reveal" key="step1">
+        {/* Step: Email */}
+        {step === 'email' && (
+          <div className="space-y-10 opacity-0 animate-reveal" key="email">
+            <div className="space-y-4">
+              <label className="font-serif text-3xl text-[var(--text)]">
+                {t('onboarding.askEmail', language)}
+              </label>
+              <input
+                type="email"
+                inputMode="email"
+                enterKeyHint="next"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleEmailNext(); }}
+                className="w-full bg-transparent border-b-2 border-[var(--primary-dim)] py-3 text-2xl text-primary font-medium placeholder-secondary/30 focus:outline-none focus:border-primary transition-colors duration-300"
+                placeholder={t('onboarding.emailPlaceholder', language)}
+                autoFocus
+              />
+            </div>
+
+            <div className="pt-4 opacity-0 animate-reveal-delay-1">
+              <button
+                onClick={handleEmailNext}
+                disabled={!email.trim() || isLookingUp}
+                className="w-full py-4 rounded-full bg-primary text-onPrimary font-semibold text-base hover:brightness-110 disabled:opacity-20 disabled:cursor-not-allowed transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2"
+              >
+                {isLookingUp && (
+                  <div className="w-4 h-4 border-2 border-onPrimary/30 border-t-onPrimary rounded-full animate-spin" />
+                )}
+                {t('onboarding.next', language)}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step: Welcome Back (returning user) */}
+        {step === 'welcome-back' && foundUser && (
+          <div className="space-y-8 opacity-0 animate-reveal" key="welcome-back">
+            <div className="flex flex-col items-center text-center space-y-4">
+              {foundUser.selfieUrl && (
+                <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-primary/30 bg-[var(--surface)]">
+                  <img src={`/api/images/${foundUser.selfieUrl}`} alt="" className="w-full h-full object-cover" />
+                </div>
+              )}
+              <div>
+                <p className="text-secondary text-sm">{t('onboarding.welcomeBack', language)}</p>
+                <h2 className="font-serif text-3xl text-[var(--text)] mt-1">{foundUser.name}</h2>
+                <p className="text-secondary/60 text-sm mt-1 font-mono">{email}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {submitError && (
+                <p className="text-error text-xs text-center mb-2">{submitError}</p>
+              )}
+              <button
+                onClick={handleContinueAsReturning}
+                disabled={isSubmitting}
+                className="w-full py-4 rounded-full bg-primary text-onPrimary font-semibold text-base hover:brightness-110 disabled:opacity-50 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2"
+              >
+                {isSubmitting && (
+                  <div className="w-4 h-4 border-2 border-onPrimary/30 border-t-onPrimary rounded-full animate-spin" />
+                )}
+                {t('onboarding.continueAs', language)}
+              </button>
+              <button
+                onClick={handleNotYou}
+                className="w-full py-3 text-sm text-secondary hover:text-primary transition-colors duration-300"
+              >
+                {t('onboarding.notYou', language)}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Step: Name (new user) */}
+        {step === 'name' && (
+          <div className="space-y-10 opacity-0 animate-reveal" key="name">
             <div className="space-y-4">
               <label className="font-serif text-3xl text-[var(--text)]">
                 {t('onboarding.askName', language)}
@@ -210,48 +340,28 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({ language, onComp
                 autoComplete="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && name.trim()) setStep('selfie'); }}
                 className="w-full bg-transparent border-b-2 border-[var(--primary-dim)] py-3 text-2xl text-primary font-medium placeholder-secondary/30 focus:outline-none focus:border-primary transition-colors duration-300"
                 placeholder={t('onboarding.namePlaceholder', language)}
                 autoFocus
               />
             </div>
 
-            <div className="space-y-4 opacity-0 animate-reveal-delay-1">
-              <input
-                type="email"
-                inputMode="email"
-                enterKeyHint="next"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-transparent border-b-2 border-[var(--primary-dim)] py-3 text-xl text-primary font-medium placeholder-secondary/30 focus:outline-none focus:border-primary transition-colors duration-300"
-                placeholder={t('onboarding.emailPlaceholder', language)}
-              />
-            </div>
-
-            <div className="pt-4 space-y-3 opacity-0 animate-reveal-delay-2">
+            <div className="pt-4 opacity-0 animate-reveal-delay-1">
               <button
-                onClick={handleStep1Next}
-                disabled={!name.trim() || !email.trim()}
+                onClick={() => setStep('selfie')}
+                disabled={!name.trim()}
                 className="w-full py-4 rounded-full bg-primary text-onPrimary font-semibold text-base hover:brightness-110 disabled:opacity-20 disabled:cursor-not-allowed transition-all duration-300 active:scale-[0.98]"
               >
                 {t('onboarding.next', language)}
-              </button>
-              <button
-                type="button"
-                onClick={handleSkip}
-                disabled={isSubmitting}
-                className="w-full py-3 text-sm text-secondary hover:text-primary transition-colors duration-300"
-              >
-                {t('onboarding.skip', language)}
               </button>
             </div>
           </div>
         )}
 
-        {/* Step 2: Selfie Capture */}
-        {step === 2 && (
-          <div className="flex flex-col items-center gap-6 opacity-0 animate-reveal" key="step2">
+        {/* Step: Selfie Capture */}
+        {step === 'selfie' && (
+          <div className="flex flex-col items-center gap-6 opacity-0 animate-reveal" key="selfie">
             <div className="text-center">
               <h2 className="font-serif text-2xl text-[var(--text)] mb-2">
                 {t('onboarding.selfieTitle', language)}
@@ -261,7 +371,6 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({ language, onComp
               </p>
             </div>
 
-            {/* Camera / Preview */}
             <div className="relative w-48 h-48 rounded-full overflow-hidden border-2 border-[var(--primary-dim)] bg-[var(--surface)]">
               {selfieDataUrl ? (
                 <img src={selfieDataUrl} alt="Selfie" className="w-full h-full object-cover" />
@@ -281,12 +390,11 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({ language, onComp
               )}
             </div>
 
-            {/* Actions */}
             <div className="flex flex-col gap-3 w-full">
               {selfieDataUrl ? (
                 <>
                   <button
-                    onClick={handleStep2Next}
+                    onClick={() => setStep('persona')}
                     className="w-full py-4 rounded-full bg-primary text-onPrimary font-semibold text-base hover:brightness-110 transition-all duration-300 active:scale-[0.98]"
                   >
                     {t('onboarding.next', language)}
@@ -308,7 +416,7 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({ language, onComp
                     {t('onboarding.capture', language)}
                   </button>
                   <button
-                    onClick={handleStep2Next}
+                    onClick={() => setStep('persona')}
                     className="w-full py-3 text-sm text-secondary hover:text-primary transition-colors duration-300"
                   >
                     {t('onboarding.skipSelfie', language)}
@@ -319,9 +427,9 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({ language, onComp
           </div>
         )}
 
-        {/* Step 3: Persona Selection */}
-        {step === 3 && (
-          <div className="space-y-10 opacity-0 animate-reveal" key="step3">
+        {/* Step: Persona Selection */}
+        {step === 'persona' && (
+          <div className="space-y-10 opacity-0 animate-reveal" key="persona">
             <div className="space-y-4">
               <label className="text-secondary text-xs font-mono uppercase tracking-[0.2em]">
                 {t('onboarding.askPersona', language)}

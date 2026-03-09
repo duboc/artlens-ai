@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { IdentifyResponse, Language, UserContext } from '../types';
 import { ChatWindow } from './ChatWindow';
+import { preWarmAudio } from '../hooks/useGeminiLive';
 import { t } from '../utils/i18n';
 
 interface AnalysisResultCardProps {
@@ -89,7 +90,7 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
           <div className="w-full max-w-lg mx-auto pointer-events-auto animate-slide-up mb-4 px-4">
               <div
                   onClick={() => setIsMinimized(false)}
-                  className="warm-glass shadow-2xl rounded-full p-2 pl-6 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-all duration-300"
+                  className="bg-black/60 backdrop-blur-2xl border border-white/[0.08] shadow-2xl rounded-full p-2 pl-6 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-all duration-300"
               >
                   <div className="flex flex-col overflow-hidden mr-4">
                       <span className="font-serif text-[var(--text)] text-sm truncate">{data.title}</span>
@@ -119,7 +120,7 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
     <div className={`w-full max-w-lg mx-auto transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] pointer-events-auto mb-0
         ${isChatOpen ? 'h-[85vh]' : 'h-auto'}
     `}>
-      <div className={`bg-[var(--surface)]/95 backdrop-blur-xl border-t border-x border-[var(--primary-dim)] shadow-2xl rounded-t-[2.5rem] overflow-hidden flex flex-col transition-all duration-500
+      <div className={`bg-black/70 backdrop-blur-2xl border-t border-x border-white/[0.08] shadow-2xl rounded-t-[2.5rem] overflow-hidden flex flex-col transition-all duration-500
           ${isChatOpen ? 'h-full rounded-b-none' : 'max-h-[60vh] rounded-b-[2.5rem] mb-6'}
       `}>
 
@@ -141,7 +142,7 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
                 userContext={userContext}
                 onClose={handleChatClose}
                 initialMessage={initialChatQuery}
-                autoStartVoice={forcedChatOpen}
+                autoStartVoice
                 onPersonaChange={onPersonaChange}
             />
           ) : (
@@ -187,7 +188,7 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
               {/* Action Buttons */}
               <div className="flex gap-3 mb-6">
                 <button
-                  onClick={() => setIsChatOpen(true)}
+                  onClick={() => { preWarmAudio(); setIsChatOpen(true); }}
                   className="flex-1 py-3.5 px-6 rounded-full bg-primary text-onPrimary font-semibold text-sm transition-all duration-300 hover:brightness-110 active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-primary/10"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
@@ -212,7 +213,7 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
               {onScanAnother && (
                 <button
                   onClick={onScanAnother}
-                  className="w-full py-3 mb-6 rounded-full border border-[var(--primary-dim)] text-secondary text-sm hover:text-primary hover:border-primary/30 transition-all duration-300 flex items-center justify-center gap-2"
+                  className="w-full py-3 mb-6 rounded-full border border-white/[0.1] text-white/60 text-sm hover:text-primary hover:border-primary/30 transition-all duration-300 flex items-center justify-center gap-2"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
@@ -229,7 +230,7 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
 
               {/* Fun Fact Card — gold tinted */}
               {data.funFact && (
-                <div className="bg-primary/5 border border-primary/10 p-5 rounded-2xl mb-6">
+                <div className="bg-primary/[0.08] border border-primary/15 p-5 rounded-2xl mb-6">
                   <p className="text-xs font-mono uppercase tracking-[0.15em] text-primary/70 mb-2">
                     {t('result.didYouKnow', language)}
                   </p>
@@ -244,7 +245,7 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
 
                   {/* Curiosities — highlighted gold card */}
                   {data.deepAnalysis.curiosities && data.deepAnalysis.curiosities.length > 0 && (
-                    <div className="bg-primary/5 border border-primary/15 rounded-2xl p-5 relative overflow-hidden">
+                    <div className="bg-primary/[0.08] border border-primary/15 rounded-2xl p-5 relative overflow-hidden">
                       <h3 className="font-mono text-primary/80 text-xs uppercase tracking-[0.15em] mb-3">{t('result.uniqueInsights', language)}</h3>
                       <ul className="space-y-3">
                         {data.deepAnalysis.curiosities.map((item, idx) => (
@@ -281,7 +282,7 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
 
               {/* Sources — domain chips */}
               {data.sources.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-[var(--primary-dim)]">
+                <div className="mt-4 pt-4 border-t border-white/[0.08]">
                   <p className="text-[10px] font-mono text-secondary/40 mb-2 uppercase tracking-wider">{t('result.sources', language)}</p>
                   <div className="flex flex-wrap gap-2">
                     {data.sources.slice(0, 3).map((source, i) => (
@@ -307,7 +308,7 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
 };
 
 const Badge = ({ label }: { label: string }) => (
-  <span className="min-h-auto px-3 py-1 rounded-lg bg-[var(--surface-variant)] border border-[var(--primary-dim)] text-xs font-mono text-secondary">
+  <span className="min-h-auto px-3 py-1 rounded-lg bg-white/[0.06] border border-white/[0.1] text-xs font-mono text-white/70">
     {label}
   </span>
 );
@@ -319,4 +320,4 @@ const Section = ({ title, content }: { title: string; content: string }) => (
   </div>
 );
 
-const Divider = () => <div className="h-px bg-[var(--primary-dim)] w-full my-2" />;
+const Divider = () => <div className="h-px bg-white/[0.08] w-full my-2" />;

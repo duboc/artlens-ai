@@ -9,6 +9,31 @@ const translations: Record<string, Record<Language, string>> = {
   },
 
   // Onboarding
+  'onboarding.askEmail': {
+    en: "What's your email?",
+    pt: 'Qual seu email?',
+    es: '¿Cuál es tu email?',
+  },
+  'onboarding.emailPlaceholder': {
+    en: 'Your email',
+    pt: 'Seu email',
+    es: 'Tu email',
+  },
+  'onboarding.welcomeBack': {
+    en: 'Welcome back,',
+    pt: 'Bem-vindo de volta,',
+    es: 'Bienvenido de nuevo,',
+  },
+  'onboarding.continueAs': {
+    en: 'Continue',
+    pt: 'Continuar',
+    es: 'Continuar',
+  },
+  'onboarding.notYou': {
+    en: 'Not you? Use a different email',
+    pt: 'Não é você? Use outro email',
+    es: '¿No eres tú? Usa otro email',
+  },
   'onboarding.askName': {
     en: "What's your name?",
     pt: 'Qual seu nome?',
@@ -19,10 +44,15 @@ const translations: Record<string, Record<Language, string>> = {
     pt: 'Seu nome',
     es: 'Tu nombre',
   },
-  'onboarding.emailPlaceholder': {
-    en: 'Your email',
-    pt: 'Seu email',
-    es: 'Tu email',
+  'settings.logout': {
+    en: 'Log out',
+    pt: 'Sair',
+    es: 'Cerrar sesión',
+  },
+  'settings.loggedAs': {
+    en: 'Logged in as',
+    pt: 'Conectado como',
+    es: 'Conectado como',
   },
   'onboarding.next': {
     en: 'Next',

@@ -11,14 +11,18 @@ import { ChatWindow } from './components/ChatWindow';
 import { GenerateModal } from './components/GenerateModal';
 import { Gallery } from './components/Gallery';
 import { identifyArtwork, getDeepArtworkAnalysis } from './services/geminiService';
-import { getUserId, setUserId, apiPost, apiPatch } from './services/apiClient';
+import { getUserId, setUserId, apiPost, apiPatch, recoverSession } from './services/apiClient';
 import { IdentifyResponse, HistoryItem, Language, UserContext, Annotation, Persona, GeneratedImage } from './types';
+import { t } from './utils/i18n';
 
 const STORAGE_KEYS = {
   language: 'artlens_language',
   userContext: 'artlens_userContext',
-  history: 'artlens_history',
 };
+
+function historyKey(email: string): string {
+  return `artlens_history_${email.toLowerCase()}`;
+}
 
 const App: React.FC = () => {
   const [language, setLanguage] = useState<Language | null>(() => {
@@ -29,10 +33,12 @@ const App: React.FC = () => {
     const saved = localStorage.getItem(STORAGE_KEYS.userContext);
     if (!saved) return null;
     const parsed = JSON.parse(saved);
-    // Backfill email for legacy data
-    if (!parsed.email) parsed.email = '';
+    // Require email — force re-onboarding for legacy data without it
+    if (!parsed.email) return null;
     return parsed;
   });
+
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);
@@ -47,10 +53,16 @@ const App: React.FC = () => {
   const [forceChatOpen, setForceChatOpen] = useState(false);
   const [initialChatQuery, setInitialChatQuery] = useState<string | null>(null);
 
-  // History State — load from localStorage
+  // History State — scoped per user email
   const [history, setHistory] = useState<HistoryItem[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.history);
-    return saved ? JSON.parse(saved) : [];
+    const ctx = localStorage.getItem(STORAGE_KEYS.userContext);
+    if (!ctx) return [];
+    try {
+      const parsed = JSON.parse(ctx);
+      if (!parsed.email) return [];
+      const saved = localStorage.getItem(historyKey(parsed.email));
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
   });
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
@@ -78,10 +90,27 @@ const App: React.FC = () => {
     }
   }, [userContext]);
 
-  // Persist history (debounced)
+  // Persist history — scoped by user email
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(history));
-  }, [history]);
+    if (userContext?.email) {
+      localStorage.setItem(historyKey(userContext.email), JSON.stringify(history));
+    }
+  }, [history, userContext?.email]);
+
+  // Recover session on startup — if we have userContext but no userId, look up by email
+  useEffect(() => {
+    if (userContext?.email && !getUserId()) {
+      recoverSession();
+    }
+  }, []);
+
+  // Reload history when user changes (e.g. after onboarding or switching accounts)
+  useEffect(() => {
+    if (userContext?.email) {
+      const saved = localStorage.getItem(historyKey(userContext.email));
+      setHistory(saved ? JSON.parse(saved) : []);
+    }
+  }, [userContext?.email]);
 
   // Back navigation handlers
   const handleBackToLanguage = () => {
@@ -89,10 +118,11 @@ const App: React.FC = () => {
     localStorage.removeItem(STORAGE_KEYS.language);
   };
 
-  const handleResetPreferences = () => {
-    setLanguage(null);
+  const handleLogout = () => {
     setUserContext(null);
-    localStorage.removeItem(STORAGE_KEYS.language);
+    setResult(null);
+    setCurrentImage(null);
+    setShowSettingsMenu(false);
     localStorage.removeItem(STORAGE_KEYS.userContext);
     localStorage.removeItem('artlens_userId');
   };
@@ -144,7 +174,9 @@ const App: React.FC = () => {
 
   const clearHistory = () => {
     setHistory([]);
-    localStorage.removeItem(STORAGE_KEYS.history);
+    if (userContext?.email) {
+      localStorage.removeItem(historyKey(userContext.email));
+    }
   };
 
   const executeDeepAnalysis = async (rawBase64: string, initialResult: IdentifyResponse, lang: Language, scanId?: string) => {
@@ -190,9 +222,6 @@ const App: React.FC = () => {
 
       setResult(response);
       addToHistory(imageDataUrl, response);
-
-      // Auto-open chat after a brief delay so result card animates in first
-      setTimeout(() => setForceChatOpen(true), 1500);
 
       // Persist scan to backend (non-blocking)
       let scanId: string | undefined;
@@ -347,7 +376,7 @@ const App: React.FC = () => {
         language={language}
         onHistoryClick={() => setIsHistoryOpen(true)}
         historyCount={history.length}
-        onSettingsClick={handleResetPreferences}
+        onSettingsClick={() => setShowSettingsMenu(!showSettingsMenu)}
         onGalleryClick={() => setIsGalleryOpen(true)}
       >
         {/* Error Notification */}
@@ -399,6 +428,32 @@ const App: React.FC = () => {
             )
         )}
       </HUDOverlay>
+
+      {/* Settings Menu */}
+      {showSettingsMenu && userContext && language && (
+        <div className="absolute inset-0 z-[60]" onClick={() => setShowSettingsMenu(false)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div
+            className="absolute top-20 right-4 w-64 bg-[var(--surface)] border border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-white/[0.06]">
+              <p className="text-xs text-secondary/60 font-mono">{t('settings.loggedAs', language)}</p>
+              <p className="text-sm text-[var(--text)] font-medium truncate mt-0.5">{userContext.name}</p>
+              <p className="text-xs text-secondary/50 truncate">{userContext.email}</p>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="w-full px-4 py-3 text-left text-sm text-error/80 hover:bg-error/10 transition-colors flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              {t('settings.logout', language)}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Gallery */}
       {language && (
