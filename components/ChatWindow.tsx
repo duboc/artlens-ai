@@ -58,11 +58,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     if (autoStartVoice && !isConnected && !hasAutoStartedRef.current) {
       hasAutoStartedRef.current = true;
-      const timer = setTimeout(async () => {
+      (async () => {
         try {
           await connect(artData, language, userContext, explanationLength);
-          // Immediately trigger narration — the guide starts talking like an audio guide
-          await sendTextInput(
+          // Trigger auto-narration — the guide starts talking like an audio guide
+          sendTextInput(
             `Greet ${userContext.name} warmly and begin narrating about "${artData.title}" by ${artData.artist}. ` +
             `Start with something that hooks their attention — a surprising detail, a vivid observation, or a question. ` +
             `Then naturally flow into what makes this piece special. Keep it conversational, as if you're standing right next to them.`
@@ -70,8 +70,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         } catch (err) {
           console.error('Auto-start voice failed:', err);
         }
-      }, 800);
-      return () => clearTimeout(timer);
+      })();
     }
   }, [autoStartVoice, isConnected, connect, artData, language, userContext, explanationLength, sendTextInput]);
 

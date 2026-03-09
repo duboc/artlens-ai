@@ -5,8 +5,9 @@ import { apiPost } from '../services/apiClient';
 export const useGeminiChat = (artData: IdentifyResponse, language: Language, explanationLength: 'brief' | 'detailed' = 'detailed') => {
   const [isLoading, setIsLoading] = useState(false);
 
-  // Persistence Key based on Art Title to keep history specific to artwork
-  const storageKey = `artlens_chat_${artData.title.replace(/[^a-zA-Z0-9]/g, '_')}_${language}`;
+  // Persistence Key scoped by user email + artwork + language
+  const userEmail = (() => { try { return JSON.parse(localStorage.getItem('artlens_userContext') || '{}').email || ''; } catch { return ''; } })();
+  const storageKey = `artlens_chat_${userEmail}_${artData.title.replace(/[^a-zA-Z0-9]/g, '_')}_${language}`;
 
   // Initialize State from LocalStorage
   const [messages, setMessages] = useState<ChatMessage[]>(() => {

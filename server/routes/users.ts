@@ -8,7 +8,8 @@ const router = Router();
 const VALID_PERSONAS = ['guide', 'academic', 'blogger'];
 const VALID_LANGUAGES = ['en', 'pt', 'es'];
 
-// POST /api/users — Create user at onboarding (no auth required)
+// POST /api/users — Create or find user by email (no auth required)
+// Upsert: if a user with this email already exists, update profile and return existing userId.
 router.post('/', async (req: Request, res: Response) => {
   try {
     const { name, email, persona, language } = req.body;
@@ -30,12 +31,33 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    const userId = uuidv4();
     const db = getFirestore();
+    const normalizedEmail = email.trim().toLowerCase();
 
+    // Look up existing user by email
+    const existing = await db.collection('users')
+      .where('email', '==', normalizedEmail)
+      .limit(1)
+      .get();
+
+    if (!existing.empty) {
+      // User exists — update profile and return existing userId
+      const doc = existing.docs[0];
+      await doc.ref.update({
+        name: name.trim(),
+        persona,
+        language,
+        lastActiveAt: FieldValue.serverTimestamp(),
+      });
+      res.status(200).json({ userId: doc.id, returning: true });
+      return;
+    }
+
+    // New user — create
+    const userId = uuidv4();
     await db.collection('users').doc(userId).set({
       name: name.trim(),
-      email: email.trim(),
+      email: normalizedEmail,
       persona,
       language,
       selfieUrl: '',
@@ -46,6 +68,41 @@ router.post('/', async (req: Request, res: Response) => {
     res.status(201).json({ userId });
   } catch (err) {
     console.error('Create user error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/users/lookup?email=... — Find user by email (no auth required, used during onboarding)
+router.get('/lookup', async (req: Request, res: Response) => {
+  try {
+    const email = (req.query.email as string || '').trim().toLowerCase();
+    if (!email) {
+      res.status(400).json({ error: 'Missing email query parameter' });
+      return;
+    }
+
+    const db = getFirestore();
+    const snapshot = await db.collection('users')
+      .where('email', '==', email)
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) {
+      res.json({ found: false });
+      return;
+    }
+
+    const doc = snapshot.docs[0];
+    const data = doc.data();
+    res.json({
+      found: true,
+      userId: doc.id,
+      name: data.name,
+      persona: data.persona,
+      selfieUrl: data.selfieUrl || '',
+    });
+  } catch (err) {
+    console.error('Lookup user error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

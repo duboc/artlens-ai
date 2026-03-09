@@ -10,7 +10,8 @@ export function setUserId(id: string): void {
   localStorage.setItem(USER_ID_KEY, id);
 }
 
-// Re-register the user from saved localStorage context when the session is stale
+// Recover session from saved context — POST /api/users upserts by email,
+// so this finds the existing user rather than creating a duplicate.
 async function reRegisterUser(): Promise<string | null> {
   const ctx = localStorage.getItem(USER_CONTEXT_KEY);
   const lang = localStorage.getItem(LANGUAGE_KEY);
@@ -18,12 +19,14 @@ async function reRegisterUser(): Promise<string | null> {
 
   try {
     const parsed = JSON.parse(ctx);
+    if (!parsed.email) return null;
+
     const res = await fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: parsed.name || 'Guest',
-        email: parsed.email || 'guest@artlens.ai',
+        name: parsed.name,
+        email: parsed.email,
         persona: parsed.persona || 'guide',
         language: lang || 'en',
       }),
@@ -38,6 +41,14 @@ async function reRegisterUser(): Promise<string | null> {
     // silent failure
   }
   return null;
+}
+
+// On app startup, recover the session if we have saved context but no userId.
+// Returns the userId if recovered, null otherwise.
+export async function recoverSession(): Promise<string | null> {
+  const existing = getUserId();
+  if (existing) return existing;
+  return reRegisterUser();
 }
 
 async function requestWithRetry(
