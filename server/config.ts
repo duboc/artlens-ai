@@ -15,10 +15,10 @@ export const config = {
   allowedOrigins: (process.env.ALLOWED_ORIGINS || 'http://localhost:3000').split(','),
 };
 
-// Warn about missing critical config at startup
+// Warn about missing critical config at startup (plain console since logger isn't imported here)
 if (!config.projectId) {
-  console.warn('⚠️  GOOGLE_CLOUD_PROJECT not set — Vertex AI calls will fail');
+  console.warn('\x1b[33m⚠️  GOOGLE_CLOUD_PROJECT not set — Vertex AI calls will fail\x1b[0m');
 }
 if (!config.bucket) {
-  console.warn('⚠️  GCS_BUCKET not set — image uploads will fail');
+  console.warn('\x1b[33m⚠️  GCS_BUCKET not set — image uploads will fail\x1b[0m');
 }

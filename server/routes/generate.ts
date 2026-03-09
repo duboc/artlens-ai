@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getAccessToken, getGenerateUrl } from '../services/vertexai';
 import { config } from '../config';
+import { log } from '../utils/logger';
 
 const router = Router();
 
@@ -55,6 +56,18 @@ router.post('/', async (req: Request, res: Response) => {
     if (tools) vertexBody.tools = tools;
     if (systemInstruction) vertexBody.systemInstruction = systemInstruction;
 
+    const usedModel = model || config.vertex.modelText;
+    const hasTools = !!(tools && tools.length);
+    const hasImage = normalizedContents?.some((c: any) => c.parts?.some((p: any) => p.inlineData));
+    const turnCount = normalizedContents?.length || 0;
+
+    log.info('generate', `→ ${usedModel}`, {
+      turns: turnCount,
+      tools: hasTools,
+      image: hasImage,
+    });
+
+    const startTime = Date.now();
     const token = await getAccessToken();
     const url = getGenerateUrl(model);
 
@@ -63,16 +76,23 @@ router.post('/', async (req: Request, res: Response) => {
     // Fallback: if the primary model fails and no explicit model was requested,
     // retry with the fallback model
     if (!result.ok && !model && config.vertex.modelTextFallback) {
+      log.warn('generate', `Primary model failed (${result.status}), retrying with ${config.vertex.modelTextFallback}`, {
+        error: result.data?.error?.message,
+      });
       const fallbackUrl = getGenerateUrl(config.vertex.modelTextFallback);
-      console.log(`Primary model failed (${result.status}), falling back to ${config.vertex.modelTextFallback}`);
       result = await callVertexAI(fallbackUrl, token, vertexBody);
     }
+
+    const elapsed = Date.now() - startTime;
 
     if (!result.ok) {
       const status = result.status === 429 ? 429
         : result.status === 400 ? 400
         : result.status === 403 ? 403
         : 502;
+      log.error('generate', `← ${status} in ${elapsed}ms`, {
+        error: result.data?.error?.message,
+      });
       res.status(status).json({
         error: result.data?.error?.message || 'Vertex AI request failed',
         details: result.data?.error,
@@ -82,9 +102,12 @@ router.post('/', async (req: Request, res: Response) => {
 
     // Add convenience top-level text field
     const text = result.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    log.info('generate', `← 200 in ${elapsed}ms`, {
+      chars: text.length,
+    });
     res.json({ text, ...result.data });
   } catch (err: any) {
-    console.error('Generate error:', err);
+    log.error('generate', `Exception: ${err.message}`);
     res.status(502).json({ error: `Failed to forward request to Vertex AI: ${err.message || err}` });
   }
 });
