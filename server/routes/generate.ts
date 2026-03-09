@@ -1,7 +1,34 @@
 import { Router, Request, Response } from 'express';
 import { getAccessToken, getGenerateUrl } from '../services/vertexai';
+import { config } from '../config';
 
 const router = Router();
+
+// Call Vertex AI generateContent and return parsed response
+async function callVertexAI(
+  url: string,
+  token: string,
+  body: Record<string, any>,
+): Promise<{ ok: boolean; status: number; data: any }> {
+  const vertexResponse = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  const responseText = await vertexResponse.text();
+  let data: any;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    return { ok: false, status: 502, data: { error: { message: 'Vertex AI returned non-JSON: ' + responseText.slice(0, 200) } } };
+  }
+
+  return { ok: vertexResponse.ok, status: vertexResponse.status, data };
+}
 
 // POST /api/generate — Forward text generation to Vertex AI
 router.post('/', async (req: Request, res: Response) => {
@@ -31,40 +58,31 @@ router.post('/', async (req: Request, res: Response) => {
     const token = await getAccessToken();
     const url = getGenerateUrl(model);
 
-    const vertexResponse = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(vertexBody),
-    });
+    let result = await callVertexAI(url, token, vertexBody);
 
-    const responseText = await vertexResponse.text();
-    let data: any;
-    try {
-      data = JSON.parse(responseText);
-    } catch {
-      console.error('Vertex AI returned non-JSON:', responseText.slice(0, 200));
-      res.status(502).json({ error: 'Vertex AI returned an invalid response. Check GOOGLE_CLOUD_PROJECT env var.' });
-      return;
+    // Fallback: if the primary model fails and no explicit model was requested,
+    // retry with the fallback model
+    if (!result.ok && !model && config.vertex.modelTextFallback) {
+      const fallbackUrl = getGenerateUrl(config.vertex.modelTextFallback);
+      console.log(`Primary model failed (${result.status}), falling back to ${config.vertex.modelTextFallback}`);
+      result = await callVertexAI(fallbackUrl, token, vertexBody);
     }
 
-    if (!vertexResponse.ok) {
-      const status = vertexResponse.status === 429 ? 429
-        : vertexResponse.status === 400 ? 400
-        : vertexResponse.status === 403 ? 403
+    if (!result.ok) {
+      const status = result.status === 429 ? 429
+        : result.status === 400 ? 400
+        : result.status === 403 ? 403
         : 502;
       res.status(status).json({
-        error: data?.error?.message || 'Vertex AI request failed',
-        details: data?.error,
+        error: result.data?.error?.message || 'Vertex AI request failed',
+        details: result.data?.error,
       });
       return;
     }
 
     // Add convenience top-level text field
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    res.json({ text, ...data });
+    const text = result.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    res.json({ text, ...result.data });
   } catch (err: any) {
     console.error('Generate error:', err);
     res.status(502).json({ error: `Failed to forward request to Vertex AI: ${err.message || err}` });

@@ -56,8 +56,7 @@ router.post('/', async (req: Request, res: Response) => {
           ],
         }],
         generationConfig: {
-          responseModalities: ['IMAGE'],
-          responseMimeType: 'image/png',
+          responseModalities: ['IMAGE', 'TEXT'],
         },
       }),
     });

@@ -89,7 +89,7 @@ Cloud Run proxy for Vertex AI, Firestore, and Cloud Storage. Lives in `server/`,
 - **`/ws/live`**: Pass-through WebSocket bridge. Injects full model resource path into setup message. ADC token on first message. 15-min session timeout.
 - **Firestore:** `users/{userId}`, `users/{userId}/scans/{scanId}`, `users/{userId}/scans/{scanId}/chats/{messageId}`
 - **Cloud Storage:** `users/{userId}/selfie.jpg`, `users/{userId}/scans/{scanId}.jpg`
-- **Config defaults:** port 3001, `gemini-3-flash-preview` (text, region: global), `gemini-live-2.5-flash-native-audio` (live, region: us-central1)
+- **Config defaults:** port 3001, `gemini-3.1-flash-lite-preview` (text, region: global, fallback: `gemini-3-flash-preview`), `gemini-live-2.5-flash-native-audio` (live, region: us-central1)
 
 ### UI Layering (z-index stack)
 
@@ -170,5 +170,5 @@ See `docs/IMPLEMENTATION_ROADMAP.md` for full details, timeline, and dependency 
 ## Model Preferences
 
 - **Voice/Live API:** `gemini-live-2.5-flash-native-audio` (region: us-central1)
-- **Text interactions:** `gemini-3-flash-preview` (region: global)
+- **Text interactions:** `gemini-3.1-flash-lite-preview` (region: global, fallback: `gemini-3-flash-preview`)
 - **Image interactions:** `gemini-3.1-flash-image-preview` (region: global)
