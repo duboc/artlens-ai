@@ -359,19 +359,11 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({ language, onComp
           </div>
         )}
 
-        {/* Step: Selfie Capture */}
+        {/* Step: Selfie Capture — Full-screen camera */}
         {step === 'selfie' && (
-          <div className="flex flex-col items-center gap-6 opacity-0 animate-reveal" key="selfie">
-            <div className="text-center">
-              <h2 className="font-serif text-2xl text-[var(--text)] mb-2">
-                {t('onboarding.selfieTitle', language)}
-              </h2>
-              <p className="text-sm text-secondary/70">
-                {t('onboarding.selfieDesc', language)}
-              </p>
-            </div>
-
-            <div className="relative w-48 h-48 rounded-full overflow-hidden border-2 border-[var(--primary-dim)] bg-[var(--surface)]">
+          <div className="fixed inset-0 z-[70] bg-black flex flex-col" key="selfie">
+            {/* Camera / Preview — fills available space */}
+            <div className="relative flex-1 overflow-hidden">
               {selfieDataUrl ? (
                 <img src={selfieDataUrl} alt="Selfie" className="w-full h-full object-cover" />
               ) : (
@@ -384,15 +376,37 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({ language, onComp
                 />
               )}
               {!selfieDataUrl && !isCameraReady && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                <div className="absolute inset-0 flex items-center justify-center bg-black">
+                  <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                 </div>
               )}
+              {/* Face guide overlay — visible only while camera is live */}
+              {!selfieDataUrl && isCameraReady && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="w-64 h-64 rounded-full border-2 border-white/20" />
+                </div>
+              )}
+              {/* Top bar with title */}
+              <div className="absolute top-0 left-0 right-0 pt-safe px-6 pb-4 bg-gradient-to-b from-black/60 to-transparent">
+                <div className="flex items-center justify-between mt-2">
+                  <button
+                    onClick={handleBack}
+                    className="text-white/80 hover:text-white transition-colors p-2 -ml-2"
+                  >
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <h2 className="font-serif text-lg text-white">{t('onboarding.selfieTitle', language)}</h2>
+                  <div className="w-10" />
+                </div>
+              </div>
             </div>
 
-            <div className="flex flex-col gap-3 w-full">
+            {/* Bottom controls */}
+            <div className="bg-black px-6 pt-6 pb-safe">
               {selfieDataUrl ? (
-                <>
+                <div className="flex flex-col gap-3">
                   <button
                     onClick={() => setStep('persona')}
                     className="w-full py-4 rounded-full bg-primary text-onPrimary font-semibold text-base hover:brightness-110 transition-all duration-300 active:scale-[0.98]"
@@ -401,27 +415,27 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({ language, onComp
                   </button>
                   <button
                     onClick={retakeSelfie}
-                    className="w-full py-3 text-sm text-secondary hover:text-primary transition-colors duration-300"
+                    className="w-full py-3 text-sm text-white/60 hover:text-white transition-colors duration-300"
                   >
                     {t('onboarding.retake', language)}
                   </button>
-                </>
+                </div>
               ) : (
-                <>
+                <div className="flex flex-col items-center gap-4">
                   <button
                     onClick={captureSelfie}
                     disabled={!isCameraReady}
-                    className="w-full py-4 rounded-full bg-primary text-onPrimary font-semibold text-base hover:brightness-110 disabled:opacity-20 disabled:cursor-not-allowed transition-all duration-300 active:scale-[0.98]"
+                    className="w-20 h-20 rounded-full border-4 border-white/80 flex items-center justify-center disabled:opacity-20 transition-all duration-300 active:scale-90"
                   >
-                    {t('onboarding.capture', language)}
+                    <div className="w-16 h-16 rounded-full bg-white/90" />
                   </button>
                   <button
-                    onClick={() => setStep('persona')}
-                    className="w-full py-3 text-sm text-secondary hover:text-primary transition-colors duration-300"
+                    onClick={() => { stopSelfieCamera(); setStep('persona'); }}
+                    className="text-sm text-white/40 hover:text-white/70 transition-colors duration-300 pb-2"
                   >
                     {t('onboarding.skipSelfie', language)}
                   </button>
-                </>
+                </div>
               )}
             </div>
           </div>

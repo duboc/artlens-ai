@@ -11,8 +11,8 @@ import { ChatWindow } from './components/ChatWindow';
 import { GenerateModal } from './components/GenerateModal';
 import { Gallery } from './components/Gallery';
 import { identifyArtwork, getDeepArtworkAnalysis } from './services/geminiService';
-import { getUserId, setUserId, apiPost, apiPatch, recoverSession } from './services/apiClient';
-import { IdentifyResponse, HistoryItem, Language, UserContext, Annotation, Persona, GeneratedImage } from './types';
+import { getUserId, setUserId, apiPost, apiGet, apiPatch, recoverSession } from './services/apiClient';
+import { IdentifyResponse, HistoryItem, Language, UserContext, Annotation, Persona } from './types';
 import { t } from './utils/i18n';
 
 const STORAGE_KEYS = {
@@ -20,9 +20,7 @@ const STORAGE_KEYS = {
   userContext: 'artlens_userContext',
 };
 
-function historyKey(email: string): string {
-  return `artlens_history_${email.toLowerCase()}`;
-}
+
 
 const App: React.FC = () => {
   const [language, setLanguage] = useState<Language | null>(() => {
@@ -53,17 +51,8 @@ const App: React.FC = () => {
   const [forceChatOpen, setForceChatOpen] = useState(false);
   const [initialChatQuery, setInitialChatQuery] = useState<string | null>(null);
 
-  // History State — scoped per user email
-  const [history, setHistory] = useState<HistoryItem[]>(() => {
-    const ctx = localStorage.getItem(STORAGE_KEYS.userContext);
-    if (!ctx) return [];
-    try {
-      const parsed = JSON.parse(ctx);
-      if (!parsed.email) return [];
-      const saved = localStorage.getItem(historyKey(parsed.email));
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
+  // History State — loaded from backend
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   // Generate Me modal
@@ -90,27 +79,30 @@ const App: React.FC = () => {
     }
   }, [userContext]);
 
-  // Persist history — scoped by user email
-  useEffect(() => {
-    if (userContext?.email) {
-      localStorage.setItem(historyKey(userContext.email), JSON.stringify(history));
-    }
-  }, [history, userContext?.email]);
-
   // Recover session on startup — if we have userContext but no userId, look up by email
   useEffect(() => {
     if (userContext?.email && !getUserId()) {
-      recoverSession();
+      recoverSession().then(() => loadHistory());
     }
   }, []);
 
-  // Reload history when user changes (e.g. after onboarding or switching accounts)
-  useEffect(() => {
-    if (userContext?.email) {
-      const saved = localStorage.getItem(historyKey(userContext.email));
-      setHistory(saved ? JSON.parse(saved) : []);
+  // Load history from backend when user changes
+  const loadHistory = useCallback(async () => {
+    const userId = getUserId();
+    if (!userId) return;
+    try {
+      const data = await apiGet<{ scans: HistoryItem[] }>(`/api/users/${userId}/scans`);
+      setHistory(data.scans || []);
+    } catch (err) {
+      console.error('Failed to load history:', err);
     }
-  }, [userContext?.email]);
+  }, []);
+
+  useEffect(() => {
+    if (userContext?.email && getUserId()) {
+      loadHistory();
+    }
+  }, [userContext?.email, loadHistory]);
 
   // Back navigation handlers
   const handleBackToLanguage = () => {
@@ -162,11 +154,12 @@ const App: React.FC = () => {
     return canvas.toDataURL('image/jpeg', 0.8);
   }, []);
 
-  const addToHistory = (image: string, data: IdentifyResponse) => {
+  const addToHistory = (scanId: string, data: IdentifyResponse) => {
+    const userId = getUserId();
     const newItem: HistoryItem = {
-      id: Date.now().toString(),
+      id: scanId,
       timestamp: Date.now(),
-      imageUrl: image,
+      imageUrl: userId ? `/api/images/users/${userId}/scans/${scanId}.jpg` : '',
       data: data
     };
     setHistory(prev => [newItem, ...prev]);
@@ -174,9 +167,6 @@ const App: React.FC = () => {
 
   const clearHistory = () => {
     setHistory([]);
-    if (userContext?.email) {
-      localStorage.removeItem(historyKey(userContext.email));
-    }
   };
 
   const executeDeepAnalysis = async (rawBase64: string, initialResult: IdentifyResponse, lang: Language, scanId?: string) => {
@@ -188,7 +178,7 @@ const App: React.FC = () => {
         setResult(updatedResult);
 
         setHistory(prev => prev.map(item => {
-            if (item.data.title === initialResult.title && item.timestamp === prev[0]?.timestamp) {
+            if (item.id === scanId) {
                 return { ...item, data: updatedResult };
             }
             return item;
@@ -221,9 +211,8 @@ const App: React.FC = () => {
       const response = await identifyArtwork(rawBase64, language);
 
       setResult(response);
-      addToHistory(imageDataUrl, response);
 
-      // Persist scan to backend (non-blocking)
+      // Persist scan to backend and add to history
       let scanId: string | undefined;
       if (getUserId()) {
         try {
@@ -232,6 +221,7 @@ const App: React.FC = () => {
             language,
           });
           scanId = scanResult.scanId;
+          addToHistory(scanId, response);
 
           // Upload captured image (non-blocking)
           const blob = await fetch(imageDataUrl).then(r => r.blob());
