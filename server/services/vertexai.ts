@@ -41,6 +41,13 @@ export function getImageGenerateUrl(): string {
   return `https://${host}/v1/projects/${config.projectId}/locations/${region}/publishers/google/models/${model}:generateContent`;
 }
 
+export function getTtsStreamUrl(): string {
+  const region = config.vertex.regionTts;
+  const model = config.vertex.modelTts;
+  const host = `${region}-aiplatform.googleapis.com`;
+  return `https://${host}/v1/projects/${config.projectId}/locations/${region}/publishers/google/models/${model}:streamGenerateContent?alt=sse`;
+}
+
 export function getLiveWebSocketUrl(): string {
   const region = config.vertex.regionLive;
   return `wss://${region}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1beta1.LlmBidiService/BidiGenerateContent`;

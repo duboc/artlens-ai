@@ -86,8 +86,13 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
 
         {/* App Badge */}
         <div className={`warm-glass px-4 py-1.5 rounded-full flex items-center gap-2 transition-all duration-500 ${hasResult ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
-          <div className={`w-1.5 h-1.5 rounded-full ${isScanning ? 'bg-primary animate-pulse' : 'bg-primary/50'}`} />
-          <span className="text-xs font-serif text-[var(--text)] tracking-wide">ArtLens</span>
+          <div className="flex gap-0.5">
+            <div className="w-1 h-1 rounded-full bg-gRed" />
+            <div className="w-1 h-1 rounded-full bg-gYellow" />
+            <div className="w-1 h-1 rounded-full bg-gGreen" />
+            <div className="w-1 h-1 rounded-full bg-gBlue" />
+          </div>
+          <span className="text-xs font-serif text-[var(--text)] tracking-wide">AI Academy</span>
         </div>
 
         {/* Settings Gear */}

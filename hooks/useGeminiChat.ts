@@ -1,24 +1,39 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { IdentifyResponse, Language, ChatMessage } from '../types';
-import { apiPost } from '../services/apiClient';
+import { apiPost, apiGet } from '../services/apiClient';
 
-export const useGeminiChat = (artData: IdentifyResponse, language: Language, explanationLength: 'brief' | 'detailed' = 'detailed') => {
+export const useGeminiChat = (artData: IdentifyResponse, language: Language, explanationLength: 'brief' | 'detailed' = 'detailed', scanId?: string | null) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const hasLoadedRef = useRef(false);
 
-  // Persistence Key scoped by user email + artwork + language
-  const userEmail = (() => { try { return JSON.parse(localStorage.getItem('artlens_userContext') || '{}').email || ''; } catch { return ''; } })();
-  const storageKey = `artlens_chat_${userEmail}_${artData.title.replace(/[^a-zA-Z0-9]/g, '_')}_${language}`;
+  // Load chat history from Firestore on mount
+  useEffect(() => {
+    if (!scanId || hasLoadedRef.current) return;
+    hasLoadedRef.current = true;
 
-  // Initialize State from LocalStorage
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      console.error("Failed to load chat history", e);
-      return [];
-    }
-  });
+    apiGet<{ messages: Array<{ role: string; text: string; isAudioTranscription?: boolean; createdAt?: string }> }>(`/api/scans/${scanId}/chats`)
+      .then(data => {
+        if (data.messages && data.messages.length > 0) {
+          setMessages(data.messages.map((m, i) => ({
+            id: `loaded-${i}`,
+            role: m.role as 'user' | 'model',
+            text: m.text,
+            timestamp: m.createdAt ? new Date(m.createdAt).getTime() : Date.now(),
+            isAudioTranscription: m.isAudioTranscription,
+          })));
+        }
+      })
+      .catch(err => console.error('Failed to load chat history:', err));
+  }, [scanId]);
+
+  // Persist a message to Firestore (non-blocking)
+  const persistMessage = useCallback((role: string, text: string, isAudioTranscription: boolean = false) => {
+    if (!scanId || !text.trim()) return;
+    apiPost(`/api/scans/${scanId}/chats`, { role, text, isAudioTranscription }).catch(err => {
+      console.error('Failed to persist chat message:', err);
+    });
+  }, [scanId]);
 
   // Build system instruction once
   const systemInstructionRef = useRef(() => {
@@ -30,11 +45,6 @@ export const useGeminiChat = (artData: IdentifyResponse, language: Language, exp
       : '';
     return `You are an expert art historian. User is looking at: "${artData.title}" by ${artData.artist}. Respond in ${langInstruction}.${lengthHint}`;
   });
-
-  // Save History on Change
-  const saveMessages = useCallback((msgs: ChatMessage[]) => {
-    localStorage.setItem(storageKey, JSON.stringify(msgs));
-  }, [storageKey]);
 
   // Use a ref to always have access to the latest messages without re-creating sendMessage
   const messagesRef = useRef<ChatMessage[]>(messages);
@@ -52,7 +62,7 @@ export const useGeminiChat = (artData: IdentifyResponse, language: Language, exp
 
     const updatedMessages = [...messagesRef.current, userMsg];
     setMessages(updatedMessages);
-    saveMessages(updatedMessages);
+    persistMessage('user', text);
     setIsLoading(true);
 
     try {
@@ -69,23 +79,21 @@ export const useGeminiChat = (artData: IdentifyResponse, language: Language, exp
         },
       });
 
+      const modelText = response.text || "...";
       const modelMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'model',
-        text: response.text || "...",
+        text: modelText,
         timestamp: Date.now()
       };
-      setMessages(prev => {
-        const updated = [...prev, modelMsg];
-        saveMessages(updated);
-        return updated;
-      });
+      setMessages(prev => [...prev, modelMsg]);
+      persistMessage('model', modelText);
     } catch (e) {
       console.error("Chat error", e);
     } finally {
       setIsLoading(false);
     }
-  }, [saveMessages]);
+  }, [persistMessage]);
 
   // Helper to add externally generated messages (e.g. from Live API transcription)
   const addExternalMessage = useCallback((text: string, role: 'user' | 'model', isFinal: boolean) => {
@@ -97,7 +105,7 @@ export const useGeminiChat = (artData: IdentifyResponse, language: Language, exp
 
         if (lastMsg && lastMsg.role === role && lastMsg.isAudioTranscription) {
              const updated = [...prev.slice(0, -1), { ...lastMsg, text: text }];
-             saveMessages(updated);
+             if (isFinal) persistMessage(role, text, true);
              return updated;
         }
 
@@ -108,10 +116,10 @@ export const useGeminiChat = (artData: IdentifyResponse, language: Language, exp
             timestamp: Date.now(),
             isAudioTranscription: true
         }];
-        if (isFinal) saveMessages(updated);
+        if (isFinal) persistMessage(role, text, true);
         return updated;
     });
-  }, [saveMessages]);
+  }, [persistMessage]);
 
   return { messages, sendMessage, isLoading, addExternalMessage };
 };

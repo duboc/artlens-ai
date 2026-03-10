@@ -11,6 +11,7 @@ import { ChatWindow } from './components/ChatWindow';
 import { GenerateModal } from './components/GenerateModal';
 import { Gallery } from './components/Gallery';
 import { identifyArtwork, getDeepArtworkAnalysis } from './services/geminiService';
+import { useNarration } from './hooks/useNarration';
 import { getUserId, setUserId, apiPost, apiGet, apiPatch, recoverSession } from './services/apiClient';
 import { IdentifyResponse, HistoryItem, Language, UserContext, Annotation, Persona } from './types';
 import { t } from './utils/i18n';
@@ -42,6 +43,7 @@ const App: React.FC = () => {
   const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);
   const [result, setResult] = useState<IdentifyResponse | null>(null);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
+  const [currentScanId, setCurrentScanId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Annotation State
@@ -58,6 +60,9 @@ const App: React.FC = () => {
   // Generate Me modal
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+
+  // Narration (TTS)
+  const narration = useNarration();
 
   // Capture flash
   const [showFlash, setShowFlash] = useState(false);
@@ -205,6 +210,7 @@ const App: React.FC = () => {
     setResult(null);
     setActiveAnnotation(null);
     setCurrentImage(imageDataUrl);
+    setCurrentScanId(null);
 
     try {
       const rawBase64 = imageDataUrl.split(',')[1];
@@ -221,25 +227,35 @@ const App: React.FC = () => {
             language,
           });
           scanId = scanResult.scanId;
+          setCurrentScanId(scanId);
           addToHistory(scanId, response);
 
-          // Upload captured image (non-blocking)
-          const blob = await fetch(imageDataUrl).then(r => r.blob());
-          const formData = new FormData();
-          formData.append('file', blob, 'scan.jpg');
-          formData.append('type', 'scan');
-          formData.append('scanId', scanId);
-          fetch('/api/images/upload', {
-            method: 'POST',
-            headers: { 'X-User-Id': getUserId()! },
-            body: formData,
-          }).catch(err => console.error('Scan image upload failed:', err));
+          // Upload captured image
+          try {
+            const blob = await fetch(imageDataUrl).then(r => r.blob());
+            const formData = new FormData();
+            formData.append('file', blob, 'scan.jpg');
+            formData.append('type', 'scan');
+            formData.append('scanId', scanId);
+            await fetch('/api/images/upload', {
+              method: 'POST',
+              headers: { 'X-User-Id': getUserId()! },
+              body: formData,
+            });
+          } catch (err) {
+            console.error('Scan image upload failed:', err);
+          }
         } catch (err) {
           console.error('Failed to persist scan:', err);
         }
       }
 
       executeDeepAnalysis(rawBase64, response, language, scanId);
+
+      // Generate TTS narration (parallel, non-blocking)
+      if (userContext) {
+        narration.generate(response, userContext.persona, language, userContext.name);
+      }
 
     } catch (err: any) {
       console.error("Analysis error:", err);
@@ -284,14 +300,17 @@ const App: React.FC = () => {
     setResult(null);
     setError(null);
     setCurrentImage(null);
+    setCurrentScanId(null);
     setActiveAnnotation(null);
     setForceChatOpen(false);
     setIsDeepAnalyzing(false);
+    narration.stop();
   };
 
   const handleSelectHistory = (item: HistoryItem) => {
       setCurrentImage(item.imageUrl);
       setResult(item.data);
+      setCurrentScanId(item.id);
       setIsHistoryOpen(false);
       setActiveAnnotation(null);
   };
@@ -402,6 +421,7 @@ const App: React.FC = () => {
                 data={result}
                 language={language}
                 userContext={userContext}
+                scanId={currentScanId}
                 onClose={handleReset}
                 isDeepAnalyzing={isDeepAnalyzing}
                 forcedChatOpen={forceChatOpen}
@@ -414,6 +434,10 @@ const App: React.FC = () => {
                 onPersonaChange={handlePersonaChange}
                 onGenerateMe={() => setShowGenerateModal(true)}
                 hasSelfie={!!userContext.selfieUrl}
+                narrationIsPlaying={narration.isPlaying}
+                narrationIsGenerating={narration.isGenerating}
+                narrationScript={narration.script}
+                onStopNarration={narration.stop}
               />
             )
         )}
@@ -431,6 +455,24 @@ const App: React.FC = () => {
               <p className="text-xs text-secondary/60 font-mono">{t('settings.loggedAs', language)}</p>
               <p className="text-sm text-[var(--text)] font-medium truncate mt-0.5">{userContext.name}</p>
               <p className="text-xs text-secondary/50 truncate">{userContext.email}</p>
+            </div>
+            <div className="px-4 py-3 border-b border-white/[0.06]">
+              <p className="text-xs text-secondary/60 font-mono mb-2">{t('settings.persona', language)}</p>
+              <div className="flex gap-2">
+                {(['guide', 'academic', 'blogger'] as const).map(p => (
+                  <button
+                    key={p}
+                    onClick={() => handlePersonaChange(p)}
+                    className={`flex-1 py-1.5 rounded-full text-xs font-medium transition-all duration-300
+                      ${userContext.persona === p
+                        ? 'bg-primary/15 text-primary border border-primary/30'
+                        : 'bg-[var(--surface-variant)] text-secondary border border-white/[0.06] hover:border-primary/20'
+                      }`}
+                  >
+                    {t(`result.${p === 'academic' ? 'curator' : p}`, language)}
+                  </button>
+                ))}
+              </div>
             </div>
             <button
               onClick={handleLogout}
