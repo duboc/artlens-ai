@@ -212,15 +212,23 @@ router.get('/:userId/scans', authMiddleware, async (req: Request, res: Response)
 
     const scans = snapshot.docs.map(doc => {
       const data = doc.data();
+      const imageUrl = `/api/images/users/${userId}/scans/${doc.id}.jpg`;
       return {
-        scanId: doc.id,
-        artworkTitle: data.artworkTitle,
-        artist: data.artist,
-        year: data.year,
-        style: data.style,
-        capturedImageUrl: data.capturedImageUrl,
-        createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
-        language: data.language,
+        id: doc.id,
+        timestamp: data.createdAt?.toMillis?.() || 0,
+        imageUrl,
+        data: {
+          title: data.artworkTitle || '',
+          artist: data.artist || '',
+          year: data.year || '',
+          country: data.country || '',
+          style: data.style || '',
+          description: data.description || '',
+          funFact: data.funFact || '',
+          sources: data.sources || [],
+          annotations: data.annotations || [],
+          deepAnalysis: data.deepAnalysis || undefined,
+        },
       };
     });
 

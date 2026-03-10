@@ -1,0 +1,11 @@
+# Inherit .gitignore rules
+#!include:.gitignore
+
+node_modules/
+dist/
+.env
+.env.*
+.claude/
+.git/
+.DS_Store
+*.log
