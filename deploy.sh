@@ -72,10 +72,12 @@ gcloud run deploy "$SERVICE_NAME" \
   --region "$DEPLOY_REGION" \
   --allow-unauthenticated \
   --set-env-vars "$ENV_PAIRS" \
-  --memory 512Mi \
-  --cpu 1 \
-  --min-instances 0 \
-  --max-instances 3 \
+  --memory 4Gi \
+  --cpu 4 \
+  --min-instances 1 \
+  --max-instances 5 \
+  --concurrency 250 \
+  --session-affinity \
   --timeout 300
 
 echo ""

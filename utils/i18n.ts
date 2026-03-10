@@ -54,6 +54,11 @@ const translations: Record<string, Record<Language, string>> = {
     pt: 'Conectado como',
     es: 'Conectado como',
   },
+  'settings.persona': {
+    en: 'Guide persona',
+    pt: 'Persona do guia',
+    es: 'Persona del guía',
+  },
   'onboarding.next': {
     en: 'Next',
     pt: 'Próximo',

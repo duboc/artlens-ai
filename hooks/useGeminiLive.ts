@@ -1,6 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { IdentifyResponse, Language, UserContext } from '../types';
+import { IdentifyResponse, Language, UserContext, Persona } from '../types';
 import { createPcmBlob, decodeAudioData, base64ToUint8Array } from '../utils/audioUtils';
+
+const VOICE_MAP: Record<string, string> = {
+  guide: 'Zephyr',
+  academic: 'Kore',
+  blogger: 'Puck',
+};
 
 interface AudioBlob {
   data: string;
@@ -12,7 +18,7 @@ interface UseGeminiLiveReturn {
   isSpeaking: boolean;
   isMuted: boolean;
   activeMicLabel: string | null;
-  connect: (context: IdentifyResponse, language: Language, user: UserContext, explanationLength?: 'brief' | 'detailed') => Promise<void>;
+  connect: (context: IdentifyResponse, language: Language, user: UserContext, explanationLength?: 'brief' | 'detailed', narrationScript?: string | null) => Promise<void>;
   disconnect: () => void;
   toggleMute: () => void;
   sendTextInput: (text: string) => Promise<void>;
@@ -124,7 +130,7 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
     });
   }, [ensureAudioContext]);
 
-  const connect = useCallback(async (contextData: IdentifyResponse, language: Language, user: UserContext, explanationLength: 'brief' | 'detailed' = 'detailed') => {
+  const connect = useCallback(async (contextData: IdentifyResponse, language: Language, user: UserContext, explanationLength: 'brief' | 'detailed' = 'detailed', narrationScript?: string | null) => {
     setError(null);
     try {
       // Use pre-warmed AudioContexts if available (created in user gesture context)
@@ -149,6 +155,8 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
           track.enabled = false;
           setIsMuted(true);
       }
+
+      const voice = VOICE_MAP[user.persona] || 'Zephyr';
 
       let langInstruction = 'English';
       if (language === 'pt') langInstruction = 'Portuguese';
@@ -187,7 +195,7 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
 
       const systemInstruction = `
           ${personaInstruction}
-          Your name is ArtLens. Address the user as "${user.name}".
+          You are the museum guide for the Google Cloud AI Leadership Academy visit to the Museu Nacional d'Art de Catalunya (MNAC). Address the user as "${user.name}".
           ${lengthInstruction}
 
           MUSEUM CONTEXT:
@@ -206,6 +214,12 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
           Style: ${contextData.style}
           Description: ${contextData.description}
           ${deepContext}
+          ${narrationScript ? `
+          PRIOR NARRATION:
+          The visitor has already heard this narration about the artwork (via TTS):
+          "${narrationScript}"
+          Do NOT repeat this introduction. Continue naturally from where the narration left off — add new insights, go deeper, or respond to questions.
+          ` : ''}
 
           BEHAVIOR:
           - Speak naturally and conversationally — you are a companion, not a textbook.
@@ -237,7 +251,7 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
                 response_modalities: ['AUDIO'],
                 speech_config: {
                   voice_config: {
-                    prebuilt_voice_config: { voice_name: 'Kore' },
+                    prebuilt_voice_config: { voice_name: voice },
                   },
                 },
               },

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
-    <title>ArtLens AI</title>
+    <title>AI Leadership Academy</title>
 
     <!-- Google Sans + JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -41,6 +41,10 @@
               },
               error: '#ea4335',
               success: '#34a853',
+              gRed: '#EA4335',
+              gYellow: '#FBBC04',
+              gGreen: '#34A853',
+              gBlue: '#4285F4',
             },
             spacing: {
               'safe-top': 'env(safe-area-inset-top)',
@@ -134,21 +138,31 @@
         scrollbar-width: none;
       }
 
-      /* Blue shimmer text effect */
+      /* Google 4-color shimmer text effect */
       .text-shimmer {
         background: linear-gradient(
           110deg,
           #4285F4 0%,
-          #8ab4f8 25%,
-          #4285F4 50%,
-          #8ab4f8 75%,
+          #EA4335 25%,
+          #FBBC04 50%,
+          #34A853 75%,
           #4285F4 100%
         );
         background-size: 200% auto;
         -webkit-background-clip: text;
         background-clip: text;
         -webkit-text-fill-color: transparent;
-        animation: shimmer 3s ease-in-out infinite;
+        animation: shimmer 4s ease-in-out infinite;
+      }
+
+      /* Google rainbow gradient bar */
+      .google-gradient {
+        background: linear-gradient(90deg, #EA4335 0%, #EA4335 25%, #FBBC04 25%, #FBBC04 50%, #34A853 50%, #34A853 75%, #4285F4 75%, #4285F4 100%);
+      }
+
+      /* Smooth Google gradient */
+      .google-gradient-smooth {
+        background: linear-gradient(90deg, #EA4335, #FBBC04, #34A853, #4285F4);
       }
 
       /* Blue border glow */

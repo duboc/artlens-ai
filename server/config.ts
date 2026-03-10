@@ -11,6 +11,8 @@ export const config = {
     modelLive: process.env.MODEL_LIVE || 'gemini-live-2.5-flash-native-audio',
     modelImage: process.env.MODEL_IMAGE || 'gemini-3.1-flash-image-preview',
     regionImage: process.env.VERTEX_REGION_IMAGE || 'global',
+    modelTts: process.env.MODEL_TTS || 'gemini-2.5-flash-tts',
+    regionTts: process.env.VERTEX_REGION_TTS || 'us-central1',
   },
   allowedOrigins: (process.env.ALLOWED_ORIGINS || 'http://localhost:3000').split(','),
 };

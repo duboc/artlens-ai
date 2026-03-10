@@ -10,18 +10,21 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({ onSelect }) 
     <div className="absolute inset-0 z-50 bg-[var(--bg)] flex flex-col px-6 py-12 pt-safe pb-safe">
 
       <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full">
-        {/* Title — staggered reveal */}
-        <div className="mb-14 opacity-0 animate-reveal">
-          <h1 className="font-serif text-6xl text-shimmer mb-3 tracking-tight leading-none">
-            ArtLens
+        {/* Title */}
+        <div className="mb-10 opacity-0 animate-reveal flex flex-col items-center">
+          <h1 className="font-serif text-4xl text-shimmer mb-2 tracking-tight leading-none text-center">
+            AI Leadership Academy
           </h1>
-          <p className="text-secondary text-sm font-medium tracking-[0.2em] uppercase opacity-0 animate-reveal-delay-1">
-            AI Museum Companion
+          <p className="text-secondary text-sm font-medium tracking-[0.2em] uppercase opacity-0 animate-reveal-delay-1 text-center">
+            Museum Companion
           </p>
         </div>
 
+        {/* Google rainbow bar */}
+        <div className="google-gradient h-1 rounded-full mb-8 opacity-0 animate-reveal-delay-1" />
+
         {/* Subtitle */}
-        <p className="text-secondary/70 text-sm mb-8 opacity-0 animate-reveal-delay-1">
+        <p className="text-secondary/70 text-sm mb-6 opacity-0 animate-reveal-delay-1 text-center">
           Point your camera at any artwork
         </p>
 
@@ -34,8 +37,13 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({ onSelect }) 
       </div>
 
       {/* Footer */}
-      <div className="text-center opacity-0 animate-reveal-delay-3">
-        <p className="text-secondary/30 text-xs font-mono tracking-wider">v1.0</p>
+      <div className="text-center opacity-0 animate-reveal-delay-3 space-y-1">
+        <div className="flex items-center justify-center gap-2 text-secondary/40 text-xs">
+          <span>Google Cloud</span>
+          <span>·</span>
+          <span>IESE Business School</span>
+        </div>
+        <p className="text-secondary/25 text-[10px] font-mono tracking-wider">Barcelona 2026</p>
       </div>
     </div>
   );

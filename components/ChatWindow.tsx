@@ -17,32 +17,36 @@ interface ChatWindowProps {
   artData: IdentifyResponse;
   language: Language;
   userContext: UserContext;
+  scanId?: string | null;
   onClose: () => void;
   initialMessage?: string | null;
   autoStartVoice?: boolean;
   onPersonaChange?: (persona: 'guide' | 'academic' | 'blogger') => void;
+  narrationScript?: string | null;
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({
   artData,
   language,
   userContext,
+  scanId = null,
   onClose,
   initialMessage,
   autoStartVoice = false,
   onPersonaChange,
+  narrationScript = null,
 }) => {
   const [inputValue, setInputValue] = useState('');
   const [showPersonaPicker, setShowPersonaPicker] = useState(false);
   const [explanationLength, setExplanationLength] = useState<'brief' | 'detailed'>(() => {
-    return (localStorage.getItem('artlens_explanationLength') as 'brief' | 'detailed') || 'detailed';
+    return (localStorage.getItem('artlens_explanationLength') as 'brief' | 'detailed') || 'brief';
   });
   const scrollRef = useRef<HTMLDivElement>(null);
   const hasSentInitialRef = useRef(false);
 
   const hasDeepAnalysisRef = useRef(!!artData.deepAnalysis);
 
-  const { messages, sendMessage, isLoading: isTextLoading, addExternalMessage } = useGeminiChat(artData, language, explanationLength);
+  const { messages, sendMessage, isLoading: isTextLoading, addExternalMessage } = useGeminiChat(artData, language, explanationLength, scanId);
   const { isConnected, isSpeaking, isMuted, activeMicLabel, connect, disconnect, toggleMute, sendTextInput, stopNarration, setOnTranscript, error: liveError } = useGeminiLive();
 
   const hasAutoStartedRef = useRef(false);
@@ -60,7 +64,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       hasAutoStartedRef.current = true;
       (async () => {
         try {
-          await connect(artData, language, userContext, explanationLength);
+          await connect(artData, language, userContext, explanationLength, narrationScript);
           // Trigger auto-narration — the guide starts talking like an audio guide
           sendTextInput(
             `Greet ${userContext.name} warmly and begin narrating about "${artData.title}" by ${artData.artist}. ` +
@@ -72,7 +76,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         }
       })();
     }
-  }, [autoStartVoice, isConnected, connect, artData, language, userContext, explanationLength, sendTextInput]);
+  }, [autoStartVoice, isConnected, connect, artData, language, userContext, explanationLength, sendTextInput, narrationScript]);
 
   useEffect(() => {
       setOnTranscript((text, isUser, isFinal) => {
@@ -131,7 +135,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       if (!isConnected) {
           try {
-             await connect(artData, language, userContext, explanationLength);
+             await connect(artData, language, userContext, explanationLength, narrationScript);
              await sendTextInput(topic);
           } catch(e) {
               console.error("Failed to start voice on topic", e);
@@ -142,11 +146,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   const handleRetryConnection = () => {
-      connect(artData, language, userContext, explanationLength);
+      connect(artData, language, userContext, explanationLength, narrationScript);
   };
 
   const handleVoiceStart = () => {
-      connect(artData, language, userContext, explanationLength);
+      connect(artData, language, userContext, explanationLength, narrationScript);
   };
 
   const toggleLength = () => {
@@ -227,7 +231,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 setShowPersonaPicker(false);
                 if (isConnected) {
                   disconnect();
-                  setTimeout(() => connect(artData, language, { ...userContext, persona: p }, explanationLength), 300);
+                  setTimeout(() => connect(artData, language, { ...userContext, persona: p }, explanationLength, narrationScript), 300);
                 }
               }}
               className={`flex-1 py-2 rounded-full text-xs font-medium transition-all duration-300

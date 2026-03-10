@@ -8,6 +8,7 @@ interface AnalysisResultCardProps {
   data: IdentifyResponse;
   language: Language;
   userContext: UserContext;
+  scanId?: string | null;
   onClose: () => void;
   onDeepAnalyze?: () => void;
   isDeepAnalyzing: boolean;
@@ -18,6 +19,10 @@ interface AnalysisResultCardProps {
   onPersonaChange?: (persona: 'guide' | 'academic' | 'blogger') => void;
   onGenerateMe?: () => void;
   hasSelfie?: boolean;
+  narrationIsPlaying?: boolean;
+  narrationIsGenerating?: boolean;
+  narrationScript?: string | null;
+  onStopNarration?: () => void;
 }
 
 const getPersonaLabel = (persona: string, language: Language): string => {
@@ -38,7 +43,7 @@ const getDomainFromUrl = (url: string): string => {
 };
 
 const handleShare = async (data: IdentifyResponse) => {
-  const text = `${data.title} by ${data.artist} (${data.year}) — Identified with ArtLens AI`;
+  const text = `${data.title} by ${data.artist} (${data.year}) — AI Leadership Academy`;
   if (navigator.share) {
     try {
       await navigator.share({ title: data.title, text });
@@ -52,6 +57,7 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
   data,
   language,
   userContext,
+  scanId = null,
   onClose,
   isDeepAnalyzing,
   forcedChatOpen = false,
@@ -61,6 +67,10 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
   onPersonaChange,
   onGenerateMe,
   hasSelfie = false,
+  narrationIsPlaying = false,
+  narrationIsGenerating = false,
+  narrationScript = null,
+  onStopNarration,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -140,10 +150,12 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
                 artData={data}
                 language={language}
                 userContext={userContext}
+                scanId={scanId}
                 onClose={handleChatClose}
                 initialMessage={initialChatQuery}
                 autoStartVoice
                 onPersonaChange={onPersonaChange}
+                narrationScript={narrationScript}
             />
           ) : (
             <div ref={scrollRef} className="px-6 pb-8 pt-2 flex flex-col">
@@ -185,10 +197,35 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
                 <Badge label={data.style} />
               </div>
 
+              {/* Narration Indicator */}
+              {(narrationIsPlaying || narrationIsGenerating) && (
+                <div className="flex items-center gap-3 mb-4 px-1">
+                  {narrationIsGenerating ? (
+                    <div className="flex items-center gap-2 text-secondary/60">
+                      <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                      <span className="text-xs font-mono">Preparing narration...</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={onStopNarration}
+                      className="flex items-center gap-2 text-primary/80 hover:text-primary transition-colors"
+                    >
+                      <div className="flex items-center gap-0.5">
+                        <div className="w-0.5 h-3 bg-primary rounded-full animate-pulse" style={{ animationDelay: '0ms' }} />
+                        <div className="w-0.5 h-4 bg-primary rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
+                        <div className="w-0.5 h-2.5 bg-primary rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
+                        <div className="w-0.5 h-3.5 bg-primary rounded-full animate-pulse" style={{ animationDelay: '450ms' }} />
+                      </div>
+                      <span className="text-xs font-mono">Narrating — tap to stop</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Action Buttons */}
               <div className="flex gap-3 mb-6">
                 <button
-                  onClick={() => { preWarmAudio(); setIsChatOpen(true); }}
+                  onClick={() => { if (onStopNarration) onStopNarration(); preWarmAudio(); setIsChatOpen(true); }}
                   className="flex-1 py-3.5 px-6 rounded-full bg-primary text-onPrimary font-semibold text-sm transition-all duration-300 hover:brightness-110 active:scale-[0.98] flex items-center justify-center gap-2 shadow-lg shadow-primary/10"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
