@@ -5,15 +5,13 @@ import { AnalysisResultCard } from './components/AnalysisResultCard';
 import { HistoryDrawer } from './components/HistoryDrawer';
 import { LanguageSelector } from './components/LanguageSelector';
 import { OnboardingForm } from './components/OnboardingForm';
-import { ImageAnnotationLayer } from './components/ImageAnnotationLayer';
-import { AnnotationCard } from './components/AnnotationCard';
 import { ChatWindow } from './components/ChatWindow';
 import { GenerateModal } from './components/GenerateModal';
 import { Gallery } from './components/Gallery';
 import { identifyArtwork, getDeepArtworkAnalysis } from './services/geminiService';
 import { useNarration } from './hooks/useNarration';
 import { getUserId, setUserId, apiPost, apiGet, apiPatch, recoverSession } from './services/apiClient';
-import { IdentifyResponse, HistoryItem, Language, UserContext, Annotation, Persona } from './types';
+import { IdentifyResponse, HistoryItem, Language, UserContext, Persona } from './types';
 import { t } from './utils/i18n';
 
 const STORAGE_KEYS = {
@@ -45,9 +43,6 @@ const App: React.FC = () => {
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [currentScanId, setCurrentScanId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  // Annotation State
-  const [activeAnnotation, setActiveAnnotation] = useState<Annotation | null>(null);
 
   // Chat State integration
   const [forceChatOpen, setForceChatOpen] = useState(false);
@@ -208,7 +203,6 @@ const App: React.FC = () => {
     setError(null);
     setIsAnalyzing(true);
     setResult(null);
-    setActiveAnnotation(null);
     setCurrentImage(imageDataUrl);
     setCurrentScanId(null);
 
@@ -301,7 +295,6 @@ const App: React.FC = () => {
     setError(null);
     setCurrentImage(null);
     setCurrentScanId(null);
-    setActiveAnnotation(null);
     setForceChatOpen(false);
     setIsDeepAnalyzing(false);
     narration.stop();
@@ -312,7 +305,6 @@ const App: React.FC = () => {
       setResult(item.data);
       setCurrentScanId(item.id);
       setIsHistoryOpen(false);
-      setActiveAnnotation(null);
   };
 
   // 1. Language Selection
@@ -357,15 +349,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* AR Annotation Layer */}
-      {result && result.annotations && currentImage && !forceChatOpen && (
-          <ImageAnnotationLayer
-            annotations={result.annotations}
-            activeId={activeAnnotation?.id || null}
-            onSelect={setActiveAnnotation}
-          />
-      )}
-
       {/* History Drawer */}
       <HistoryDrawer
         isOpen={isHistoryOpen}
@@ -406,22 +389,13 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Dynamic Widget for Annotation */}
-        {activeAnnotation ? (
-            <AnnotationCard
-                annotation={activeAnnotation}
-                annotations={result?.annotations || []}
-                language={language}
-                onClose={() => setActiveAnnotation(null)}
-                onNavigate={setActiveAnnotation}
-            />
-        ) : (
-            result && (
+        {result && (
               <AnalysisResultCard
                 data={result}
                 language={language}
                 userContext={userContext}
                 scanId={currentScanId}
+                artworkImageUrl={currentImage}
                 onClose={handleReset}
                 isDeepAnalyzing={isDeepAnalyzing}
                 forcedChatOpen={forceChatOpen}
@@ -439,7 +413,6 @@ const App: React.FC = () => {
                 narrationScript={narration.script}
                 onStopNarration={narration.stop}
               />
-            )
         )}
       </HUDOverlay>
 

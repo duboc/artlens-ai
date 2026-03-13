@@ -3,12 +3,14 @@ import { IdentifyResponse, Language, UserContext } from '../types';
 import { ChatWindow } from './ChatWindow';
 import { preWarmAudio } from '../hooks/useGeminiLive';
 import { t } from '../utils/i18n';
+import { createArtworkShareCard, shareOrDownload } from '../utils/shareCard';
 
 interface AnalysisResultCardProps {
   data: IdentifyResponse;
   language: Language;
   userContext: UserContext;
   scanId?: string | null;
+  artworkImageUrl?: string | null;
   onClose: () => void;
   onDeepAnalyze?: () => void;
   isDeepAnalyzing: boolean;
@@ -42,15 +44,18 @@ const getDomainFromUrl = (url: string): string => {
   }
 };
 
-const handleShare = async (data: IdentifyResponse) => {
-  const text = `${data.title} by ${data.artist} (${data.year}) — AI Leadership Academy`;
-  if (navigator.share) {
-    try {
-      await navigator.share({ title: data.title, text });
-    } catch { /* user cancelled */ }
-  } else {
-    await navigator.clipboard.writeText(text);
-  }
+const handleShare = async (data: IdentifyResponse, imageUrl: string | null) => {
+  if (!imageUrl) return;
+  try {
+    const blob = await createArtworkShareCard(imageUrl, data);
+    const filename = `artlens-${data.title.replace(/[^a-zA-Z0-9]/g, '-')}.png`;
+    await shareOrDownload(
+      blob,
+      filename,
+      data.title,
+      `${data.title} by ${data.artist} (${data.year}) — AI Leadership Academy`,
+    );
+  } catch { /* user cancelled or error */ }
 };
 
 export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
@@ -58,6 +63,7 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
   language,
   userContext,
   scanId = null,
+  artworkImageUrl = null,
   onClose,
   isDeepAnalyzing,
   forcedChatOpen = false,
@@ -75,6 +81,18 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [showNarrationCta, setShowNarrationCta] = useState(false);
+  const prevNarrationPlaying = useRef(false);
+
+  // Detect narration finish → show CTA
+  useEffect(() => {
+    if (prevNarrationPlaying.current && !narrationIsPlaying && !narrationIsGenerating) {
+      setShowNarrationCta(true);
+      const timer = setTimeout(() => setShowNarrationCta(false), 8000);
+      return () => clearTimeout(timer);
+    }
+    prevNarrationPlaying.current = narrationIsPlaying || false;
+  }, [narrationIsPlaying, narrationIsGenerating]);
 
   useEffect(() => {
       if (forcedChatOpen) {
@@ -171,7 +189,7 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
                 <div className="flex gap-2 shrink-0">
                   {/* Share */}
                   <button
-                    onClick={() => handleShare(data)}
+                    onClick={() => handleShare(data, artworkImageUrl)}
                     className="p-2 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors duration-300"
                     aria-label="Share"
                   >
@@ -219,6 +237,16 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
                       <span className="text-xs font-mono">Narrating — tap to stop</span>
                     </button>
                   )}
+                </div>
+              )}
+
+              {/* Post-Narration CTA */}
+              {showNarrationCta && (
+                <div className="mb-4 px-4 py-3 rounded-2xl bg-primary/10 border border-primary/20 animate-fade-in flex items-center gap-3">
+                  <svg className="w-5 h-5 text-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.586 1.641a4.483 4.483 0 01-.923 1.785A5.969 5.969 0 006 21c1.282 0 2.47-.402 3.445-1.087.81.22 1.668.337 2.555.337z" />
+                  </svg>
+                  <p className="text-xs text-[var(--text)]/80 leading-relaxed">{t('result.narrationCta', language)}</p>
                 </div>
               )}
 

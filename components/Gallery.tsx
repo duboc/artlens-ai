@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Language, GeneratedImage } from '../types';
 import { apiGet, apiFetch } from '../services/apiClient';
 import { t } from '../utils/i18n';
+import { addWatermark, shareOrDownload } from '../utils/shareCard';
 
 interface GalleryProps {
   isOpen: boolean;
@@ -28,8 +29,7 @@ export const Gallery: React.FC<GalleryProps> = ({ isOpen, language, onClose }) =
 
   const handleDownload = async (image: GeneratedImage) => {
     try {
-      const response = await apiFetch(image.imageUrl);
-      const blob = await response.blob();
+      const blob = await addWatermark(image.imageUrl);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -45,24 +45,15 @@ export const Gallery: React.FC<GalleryProps> = ({ isOpen, language, onClose }) =
 
   const handleShare = async (image: GeneratedImage) => {
     try {
-      const response = await apiFetch(image.imageUrl);
-      const blob = await response.blob();
-      const file = new File([blob], 'artlens-portrait.png', { type: 'image/png' });
-      if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          title: image.artworkTitle,
-          text: `My portrait in the style of "${image.artworkTitle}" by ${image.artworkArtist}`,
-          files: [file],
-        });
-      } else if (navigator.share) {
-        await navigator.share({
-          title: image.artworkTitle,
-          text: `My portrait in the style of "${image.artworkTitle}" by ${image.artworkArtist}`,
-        });
-      }
-    } catch {
-      /* user cancelled */
-    }
+      const blob = await addWatermark(image.imageUrl);
+      const filename = `artlens-portrait-${image.artworkTitle.replace(/[^a-zA-Z0-9]/g, '-')}.png`;
+      await shareOrDownload(
+        blob,
+        filename,
+        image.artworkTitle,
+        `My portrait in the style of "${image.artworkTitle}" by ${image.artworkArtist} — AI Leadership Academy`,
+      );
+    } catch { /* user cancelled */ }
   };
 
   if (!isOpen) return null;
@@ -101,7 +92,7 @@ export const Gallery: React.FC<GalleryProps> = ({ isOpen, language, onClose }) =
           <div className="h-full flex flex-col items-center justify-center text-center px-8">
             <div className="w-20 h-20 rounded-full border border-[var(--primary-dim)] flex items-center justify-center mb-6">
               <svg className="w-9 h-9 text-primary/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
               </svg>
             </div>
             <p className="font-serif text-lg text-[var(--text)] mb-2">{t('gallery.empty', language)}</p>

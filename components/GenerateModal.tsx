@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { IdentifyResponse, Language, GeneratedImage } from '../types';
 import { apiPost, apiFetch } from '../services/apiClient';
 import { t } from '../utils/i18n';
+import { addWatermark, shareOrDownload } from '../utils/shareCard';
 
 interface GenerateModalProps {
   artData: IdentifyResponse;
@@ -118,8 +119,7 @@ export const GenerateModal: React.FC<GenerateModalProps> = ({
   const handleDownload = async () => {
     if (!imageUrl) return;
     try {
-      const response = await apiFetch(imageUrl);
-      const blob = await response.blob();
+      const blob = await addWatermark(imageUrl);
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = blobUrl;
@@ -129,7 +129,6 @@ export const GenerateModal: React.FC<GenerateModalProps> = ({
       document.body.removeChild(a);
       URL.revokeObjectURL(blobUrl);
     } catch {
-      // Fallback: open in new tab
       window.open(imageUrl, '_blank');
     }
   };
@@ -137,24 +136,15 @@ export const GenerateModal: React.FC<GenerateModalProps> = ({
   const handleShare = async () => {
     if (!imageUrl) return;
     try {
-      const response = await apiFetch(imageUrl);
-      const blob = await response.blob();
-      const file = new File([blob], `artlens-portrait.png`, { type: 'image/png' });
-      if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          title: t('generate.title', language),
-          text: `My portrait in the style of "${artData.title}" by ${artData.artist}`,
-          files: [file],
-        });
-      } else if (navigator.share) {
-        await navigator.share({
-          title: t('generate.title', language),
-          text: `My portrait in the style of "${artData.title}" by ${artData.artist}`,
-        });
-      }
-    } catch {
-      /* user cancelled */
-    }
+      const blob = await addWatermark(imageUrl);
+      const filename = `artlens-portrait-${artData.title.replace(/[^a-zA-Z0-9]/g, '-')}.png`;
+      await shareOrDownload(
+        blob,
+        filename,
+        t('generate.title', language),
+        `My portrait in the style of "${artData.title}" by ${artData.artist} — AI Leadership Academy`,
+      );
+    } catch { /* user cancelled */ }
   };
 
   const progressMessages = PROGRESS_MESSAGES[language] || PROGRESS_MESSAGES.en;

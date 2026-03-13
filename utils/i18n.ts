@@ -206,6 +206,11 @@ const translations: Record<string, Record<Language, string>> = {
     es: 'Escanear Otra',
   },
   'result.share': { en: 'Share', pt: 'Compartilhar', es: 'Compartir' },
+  'result.narrationCta': {
+    en: 'Tap the chat to learn more, or scroll down for curiosities',
+    pt: 'Toque no chat para saber mais, ou role para ver as curiosidades',
+    es: 'Toca el chat para saber más, o desplázate para ver las curiosidades',
+  },
 
   // Annotation
   'annotation.detailView': {
