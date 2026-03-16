@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { IdentifyResponse, Language, Persona } from '../types';
 import { base64ToUint8Array, decodeAudioData } from '../utils/audioUtils';
 
@@ -58,6 +58,11 @@ export const useNarration = (): UseNarrationReturn => {
     setIsPlaying(false);
     setIsGenerating(false);
   }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => { stop(); };
+  }, [stop]);
 
   const generate = useCallback(async (
     artData: IdentifyResponse,

@@ -10,6 +10,7 @@ import { GenerateModal } from './components/GenerateModal';
 import { Gallery } from './components/Gallery';
 import { identifyArtwork, getDeepArtworkAnalysis } from './services/geminiService';
 import { useNarration } from './hooks/useNarration';
+import { useWakeLock } from './hooks/useWakeLock';
 import { getUserId, setUserId, apiPost, apiGet, apiPatch, recoverSession } from './services/apiClient';
 import { IdentifyResponse, HistoryItem, Language, UserContext, Persona } from './types';
 import { t } from './utils/i18n';
@@ -58,6 +59,20 @@ const App: React.FC = () => {
 
   // Narration (TTS)
   const narration = useNarration();
+
+  // Keep screen awake during museum use
+  useWakeLock();
+
+  // Stop narration when app goes to background
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        narration.stop();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [narration.stop]);
 
   // Capture flash
   const [showFlash, setShowFlash] = useState(false);
@@ -199,6 +214,9 @@ const App: React.FC = () => {
 
   const processImageAnalysis = async (imageDataUrl: string) => {
     if (isAnalyzing || !language) return;
+
+    // Kill any existing narration immediately — don't wait for generate() later
+    narration.stop();
 
     setError(null);
     setIsAnalyzing(true);

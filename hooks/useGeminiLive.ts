@@ -107,6 +107,18 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
     return () => { cleanup(); };
   }, [cleanup]);
 
+  // Cleanup when page goes to background — prevents stale sessions playing on return
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden && wsRef.current) {
+        console.log('[audio] Page hidden — disconnecting live session');
+        cleanup();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [cleanup]);
+
   const ensureAudioContext = useCallback(async () => {
     if (inputContextRef.current?.state === 'suspended') {
       await inputContextRef.current.resume();

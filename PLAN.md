@@ -1,23 +1,18 @@
-# UX Feedback Improvements Plan
+# Mobile Bug Fixes Plan
 
-## 1. Gallery Icon — Replace Gemini sparkle with classic gallery icon
-- [x] 1.1 Replace the sparkle SVG in `components/HUDOverlay.tsx:80-81` with a classic photo gallery icon (landscape photo icon)
-- [x] 1.2 Replace the sparkle SVG in `components/Gallery.tsx:103-104` (empty state icon) with the same gallery icon for consistency
+## 1. Screen Wake Lock — Prevent screen timeout during use
+- [x] 1.1 Created `hooks/useWakeLock.ts` — wraps Screen Wake Lock API with feature detection, auto-reacquires on visibilitychange
+- [x] 1.2 Activated wake lock in `App.tsx` on main camera view (after onboarding hooks)
+- [x] 1.3 Added tests for wake lock hook (4 tests)
 
-## 2. Post-Scan CTA — Guide the user after narration ends
-- [x] 2.1 Add i18n keys for post-narration CTA text in `utils/i18n.ts`
-- [x] 2.2 Add a CTA banner in `components/AnalysisResultCard.tsx` that appears when narration finishes — animated entrance, auto-dismisses after 8s
+## 2. Scan Another — Make the re-scan action always reachable
+- [x] 2.1 Added camera icon button to minimized pill view in `AnalysisResultCard.tsx` — calls `onScanAnother` directly
+- [x] 2.2 Verified "Scan Another" button position is already above description/deepAnalysis in expanded card
+- [x] 2.3 Added tests for scan-another in both pill and expanded views (4 tests)
 
-## 3. Remove Annotation Dots Overlay
-- [x] 3.1 Remove `ImageAnnotationLayer` rendering from `App.tsx`
-- [x] 3.2 Remove `AnnotationCard` rendering from `App.tsx`
-- [x] 3.3 Remove `activeAnnotation` state and related handlers from `App.tsx`
-- [x] 3.4 Clean up: removed `ImageAnnotationLayer.tsx` component file and its import
-- [x] 3.5 Clean up: removed `AnnotationCard.tsx` component file and its import
-
-## 4. Visual Share Cards with Branding (always image, no text-only)
-- [x] 4.1 Created `utils/shareCard.ts` with `createArtworkShareCard()`, `addWatermark()`, and `shareOrDownload()`
-- [x] 4.2 Updated `handleShare()` in `AnalysisResultCard.tsx` to generate branded card image (artwork photo + metadata + curiosity + branding)
-- [x] 4.3 Updated share+download in `GenerateModal.tsx` to use `addWatermark()`
-- [x] 4.4 Updated share+download in `Gallery.tsx` to use `addWatermark()`
-- [x] 4.5 Downloads also apply watermark (GenerateModal + Gallery)
+## 3. Audio Concurrency — Kill stale sessions, prevent overlapping voices
+- [x] 3.1 Added `narration.stop()` at top of `processImageAnalysis` in `App.tsx` — kills narration before network round-trip
+- [x] 3.2 Added `visibilitychange` listener in `useGeminiLive.ts` — disconnects WebSocket when page goes hidden (root cause of two-voices bug)
+- [x] 3.3 Added `visibilitychange` listener in `App.tsx` — stops narration TTS when app goes to background
+- [x] 3.4 Added cleanup useEffect on unmount to `useNarration.ts`
+- [x] 3.5 Added tests for visibility-based cleanup and code structure verification (6 tests)
