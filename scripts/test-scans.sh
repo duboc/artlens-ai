@@ -5,10 +5,13 @@ set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://localhost:3001}"
 
+# shellcheck source=./_iap-headers.sh
+source "$(dirname "$0")/_iap-headers.sh"
+
 do_request() {
   local method="$1" url="$2"; shift 2
   local http_code
-  http_code=$(curl -s -o /tmp/artlens_response.json -w "%{http_code}" -X "$method" "$@" "$url")
+  http_code=$(curl -s -o /tmp/artlens_response.json -w "%{http_code}" -X "$method" "${IAP_HEADER[@]}" "$@" "$url")
   echo "HTTP $http_code"
   jq . /tmp/artlens_response.json
   echo ""
@@ -19,6 +22,7 @@ if [ -z "${USER_ID:-}" ]; then
   echo "=== Creating test user ==="
   curl -s -o /tmp/artlens_response.json \
     -X POST "$BASE_URL/api/users" \
+    "${IAP_HEADER[@]}" \
     -H "Content-Type: application/json" \
     -d '{"name":"Test","email":"test@test.com","persona":"guide","language":"en"}'
   USER_ID=$(jq -r '.userId' /tmp/artlens_response.json)

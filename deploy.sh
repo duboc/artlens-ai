@@ -70,7 +70,8 @@ gcloud run deploy "$SERVICE_NAME" \
   --source . \
   --project "$GOOGLE_CLOUD_PROJECT" \
   --region "$DEPLOY_REGION" \
-  --allow-unauthenticated \
+  --no-allow-unauthenticated \
+  --iap \
   --set-env-vars "$ENV_PAIRS" \
   --memory 4Gi \
   --cpu 4 \
@@ -87,6 +88,23 @@ SERVICE_URL=$(gcloud run services describe "$SERVICE_NAME" \
   --region "$DEPLOY_REGION" \
   --format 'value(status.url)')
 
+# ─── Grant IAP service agent permission to invoke Cloud Run ──────────────────
+# Without this binding, IAP authenticates users but Cloud Run rejects the
+# forwarded request with 403. Idempotent — safe to re-run on every deploy.
+echo ""
+echo "Granting roles/run.invoker to the IAP service agent..."
+PROJECT_NUMBER=$(gcloud projects describe "$GOOGLE_CLOUD_PROJECT" \
+  --format='value(projectNumber)')
+IAP_SA="service-${PROJECT_NUMBER}@gcp-sa-iap.iam.gserviceaccount.com"
+
+gcloud run services add-iam-policy-binding "$SERVICE_NAME" \
+  --project "$GOOGLE_CLOUD_PROJECT" \
+  --region "$DEPLOY_REGION" \
+  --member="serviceAccount:${IAP_SA}" \
+  --role="roles/run.invoker" \
+  --condition=None \
+  --quiet > /dev/null
+
 echo ""
 echo "====================================="
 echo "  Service URL: $SERVICE_URL"
@@ -94,3 +112,7 @@ echo "====================================="
 echo ""
 echo "TIP: Add this to your .env to restrict CORS:"
 echo "  ALLOWED_ORIGINS=$SERVICE_URL,http://localhost:3000"
+echo ""
+echo "IAP is enabled. On first deploy, also run:"
+echo "  ./setup-iap.sh           # Create OAuth brand + client (one-time)"
+echo "  ./configure-iap.sh       # Grant google.com domain access (default)"

@@ -75,6 +75,42 @@ See [`.env.example`](.env.example) for all available variables. The two required
 | `GOOGLE_CLOUD_PROJECT` | Your GCP project ID |
 | `GCS_BUCKET` | Cloud Storage bucket name |
 
+## Identity-Aware Proxy (IAP)
+
+In production the Cloud Run service sits behind [Identity-Aware Proxy](https://cloud.google.com/iap). IAP is the **only** access layer — every request is authenticated by Google before it reaches the container. The existing `X-User-Id` header continues to identify the app-level user inside the IAP perimeter; the two layers are independent.
+
+| Script | When to run | What it does |
+|--------|-------------|--------------|
+| [`deploy.sh`](deploy.sh) | Every deploy | Deploys to Cloud Run with `--no-allow-unauthenticated --iap` and grants `roles/run.invoker` to the IAP service agent |
+| [`setup-iap.sh`](setup-iap.sh) | Once per project | Enables `iap.googleapis.com`, creates the OAuth brand "ArtLens AI" and an IAP OAuth client, applies `cookieDomain` |
+| [`configure-iap.sh`](configure-iap.sh) | Once per audience (and any time access changes) | Grants/revokes `roles/iap.httpsResourceAccessor` for users or domains |
+
+Common operations:
+
+```bash
+# First deploy (run once in this order)
+./deploy.sh
+./setup-iap.sh
+./configure-iap.sh                       # Grant google.com domain (default)
+
+# Subsequent deploys — only deploy.sh
+./deploy.sh
+
+# Manage access
+./configure-iap.sh --user alice@google.com
+./configure-iap.sh --status
+./configure-iap.sh --remove --user alice@google.com
+```
+
+Required IAM on the operator: `roles/run.admin`, `roles/iam.serviceAccountUser`, `roles/iap.admin`, `roles/serviceusage.serviceUsageAdmin`.
+
+When running the API test scripts against the deployed URL, sign in with an account that has `roles/iap.httpsResourceAccessor` on the service — the scripts attach an IAP identity token automatically:
+
+```bash
+gcloud auth login
+BASE_URL=https://artlens-ai-xxxxx.run.app ./scripts/test-all.sh
+```
+
 ## Tech Stack
 
 - **Frontend:** React 19, Tailwind CSS, TypeScript, Vite
