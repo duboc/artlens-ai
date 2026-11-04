@@ -6,16 +6,20 @@ export const reinaSofia: MuseumProfile = {
   shortName: 'Museo Reina Sofía',
   city: 'Madrid',
   eventLabel: 'Madrid 2026',
+  // Checked against the museum's on-display room lists (museoreinasofia.es) in November 2026.
   guideContext:
     "You are guiding visitors at the Museo Nacional Centro de Arte Reina Sofía in Madrid, Spain's national museum of modern and contemporary art. " +
     'It occupies the former General Hospital of Madrid (the 18th-century Sabatini Building), joined to the Nouvel Building extension designed by Jean Nouvel (2005). ' +
-    "The collection runs from the late 19th century to the present, centred on Spanish art in its international context: Pablo Picasso's Guernica (1937) and its preparatory studies, " +
-    'Salvador Dalí, Joan Miró, Juan Gris, María Blanchard, Maruja Mallo, José Gutiérrez Solana and Julio González, post-war artists such as Antoni Tàpies, Eduardo Chillida and Antonio Saura (El Paso group), ' +
-    'as well as photography, film (including Luis Buñuel) and contemporary art. The collection is presented as themed rooms that connect art with history: the avant-garde, the Spanish Civil War, the dictatorship, exile and the return of democracy.',
+    'The collection on display is told as themed rooms that connect art with history. Sabatini Building, floor 2 (about 1900 to 1945): Picasso\'s Guernica (1937) with its preparatory drawings and Dora Maar\'s photographs, ' +
+    'the 1937 Spanish Pavilion (Calder\'s Mercury Fountain maquette, Miró), Cubism (Juan Gris, Picasso, Braque, Léger, María Blanchard, Lipchitz), Surrealism (Dalí, Miró, Óscar Domínguez, Magritte, Max Ernst, Tanguy, Masson), ' +
+    'women of the avant-garde (Ángeles Santos\'s Un mundo, Maruja Mallo\'s La verbena, Sonia Delaunay, Olga Sacharoff) and Civil War photography (Robert Capa, Agustí Centelles). ' +
+    "Sabatini Building, floor 4 (1975 to the present): the Transition to democracy, counterculture and Madrid's Movida (Nazario, Ceesepe, Costus, Ouka Leele, Alberto García-Alix), feminisms (Esther Ferrer, Eulàlia Grau, Martha Rosler) and 1980s photography and video. " +
+    'The Nouvel Building terraces show kinetic and geometric sculpture.',
   guideTips: [
     'Connect the artwork to Spanish 20th-century history and to the avant-garde movements represented in the collection.',
     'Where it genuinely fits, relate the work to Guernica or other landmark pieces of the collection.',
     'Displays change: never invent room numbers or exact locations; suggest the visitor check the floor plan or ask museum staff.',
+    'The post-war collection (1945–1975: Tàpies, Saura, the El Paso group) is not on display at the moment; do not send visitors to look for it.',
   ],
   identifyHint:
     'The photo was most likely taken inside the Museo Reina Sofía in Madrid. When the image is ambiguous, prefer works from its collection or current exhibitions, but do not force a match.',
@@ -64,21 +68,21 @@ export const reinaSofia: MuseumProfile = {
       id: 'surrealism',
       title: { en: 'Surrealist dreams', pt: 'Sonhos surrealistas', es: 'Sueños surrealistas' },
       hint: { en: 'Find a work from the Surrealist movement.', pt: 'Procure uma obra do surrealismo.', es: 'Busca una obra del surrealismo.' },
-      criterion: "The artwork belongs to Surrealism (e.g. Salvador Dalí, Joan Miró's surrealist period, Óscar Domínguez, René Magritte, Maruja Mallo's surrealist works).",
+      criterion: "The artwork is generally classified as Surrealist, made within the Surrealist movement (e.g. Salvador Dalí, Joan Miró's surrealist period, Óscar Domínguez, René Magritte, Max Ernst, Yves Tanguy, Victor Brauner, André Masson). Works that only show some surrealist influence, such as Picasso's Guernica, do not count.",
       points: 100,
     },
     {
       id: 'women-avant-garde',
       title: { en: 'Pioneers of the avant-garde', pt: 'Pioneiras da vanguarda', es: 'Pioneras de la vanguardia' },
       hint: { en: 'Scan a work by a woman artist.', pt: 'Escaneie uma obra de uma artista mulher.', es: 'Escanea una obra de una artista mujer.' },
-      criterion: 'The artist is a woman (e.g. Maruja Mallo, María Blanchard, Ángeles Santos, Remedios Varo, Delhy Tejero).',
+      criterion: 'The artist is a woman (e.g. Ángeles Santos, Maruja Mallo, María Blanchard, Sonia Delaunay, Olga Sacharoff, Dora Maar, Esther Ferrer, Eulàlia Grau, Martha Rosler, Ouka Leele).',
       points: 150,
     },
     {
       id: 'cubism',
       title: { en: 'Cubism in pieces', pt: 'Cubismo em pedaços', es: 'Cubismo en piezas' },
       hint: { en: 'Find a Cubist painting or collage.', pt: 'Procure uma pintura ou colagem cubista.', es: 'Busca una pintura o collage cubista.' },
-      criterion: 'The artwork is Cubist (analytic or synthetic Cubism), e.g. by Juan Gris, Pablo Picasso, Georges Braque or María Blanchard.',
+      criterion: 'The artwork is generally classified as Cubist, made during the Cubist movement (roughly 1907–1925, analytic or synthetic), e.g. by Juan Gris, Pablo Picasso, Georges Braque, Fernand Léger, María Blanchard or Jacques Lipchitz. Later works that only use cubist elements, such as Guernica, do not count.',
       points: 100,
     },
     {
@@ -89,17 +93,17 @@ export const reinaSofia: MuseumProfile = {
       points: 100,
     },
     {
-      id: 'informalism',
-      title: { en: 'Matter and gesture', pt: 'Matéria e gesto', es: 'Materia y gesto' },
-      hint: { en: 'Find post-war abstraction: Informalism or the El Paso group.', pt: 'Procure a abstração do pós-guerra: informalismo ou o grupo El Paso.', es: 'Busca la abstracción de posguerra: informalismo o el grupo El Paso.' },
-      criterion: 'The artwork is post-war Spanish abstraction or Informalism (Art Informel), e.g. Antoni Tàpies, Antonio Saura, Manolo Millares, Rafael Canogar, Luis Feito or the El Paso group.',
+      id: 'movida',
+      title: { en: 'Madrid in the 80s', pt: 'A Movida madrilena', es: 'La Movida madrileña' },
+      hint: { en: "Find a work from Madrid's Movida and the counterculture of the 70s and 80s.", pt: 'Procure uma obra da Movida e da contracultura dos anos 70 e 80.', es: 'Busca una obra de la Movida y la contracultura de los 70 y 80.' },
+      criterion: "The artwork belongs to Spain's late-1970s/1980s counterculture or Madrid's Movida (e.g. Ouka Leele, Ceesepe, Nazario, Costus, Guillermo Pérez Villalta, Alberto García-Alix).",
       points: 120,
     },
     {
       id: 'sculpture',
       title: { en: 'Iron and space', pt: 'Ferro e espaço', es: 'Hierro y espacio' },
-      hint: { en: 'Scan a sculpture.', pt: 'Escaneie uma escultura.', es: 'Escanea una escultura.' },
-      criterion: 'The artwork is a sculpture or three-dimensional work (e.g. Julio González, Eduardo Chillida, Pablo Gargallo, Alexander Calder, Jorge Oteiza).',
+      hint: { en: 'Scan a sculpture (the Nouvel terraces count too).', pt: 'Escaneie uma escultura (os terraços do Nouvel também valem).', es: 'Escanea una escultura (las terrazas del Nouvel también cuentan).' },
+      criterion: 'The artwork is a sculpture or three-dimensional work (e.g. Pablo Gargallo, Jacques Lipchitz, Manolo Hugué, Alexander Calder, Juan Muñoz, or the kinetic sculptures on the Nouvel terraces).',
       points: 120,
     },
   ],
