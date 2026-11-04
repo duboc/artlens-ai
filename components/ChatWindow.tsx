@@ -3,6 +3,7 @@ import { IdentifyResponse, Language, UserContext } from '../types';
 import { useGeminiChat } from '../hooks/useGeminiChat';
 import { useGeminiLive } from '../hooks/useGeminiLive';
 import { t } from '../utils/i18n';
+import { getMuseum } from '../museums';
 
 const getPersonaLabel = (persona: string, language: Language): string => {
   const map: Record<string, string> = {
@@ -37,6 +38,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   narrationScript = null,
 }) => {
   const [inputValue, setInputValue] = useState('');
+  const [firstTopic, ...otherTopics] = getMuseum().topics;
   const [showPersonaPicker, setShowPersonaPicker] = useState(false);
   const [explanationLength, setExplanationLength] = useState<'brief' | 'detailed'>(() => {
     return (localStorage.getItem('artlens_explanationLength') as 'brief' | 'detailed') || 'brief';
@@ -376,10 +378,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
            label={t('chat.aboutArtist', language)}
            onClick={() => handleTopicClick(`Who is ${artData.artist}? Tell me about their life, their connection to this place, and what drove them to create this.`)}
          />
-         <TopicChip
-           label={t('chat.whatsNearby', language)}
-           onClick={() => handleTopicClick(`What other works here at MNAC should I see next that connect to "${artData.title}"? What's nearby in the museum that complements this piece?`)}
-         />
+         {firstTopic && (
+           <TopicChip
+             key={firstTopic.id}
+             label={firstTopic.label[language]}
+             onClick={() => handleTopicClick(firstTopic.prompt(artData))}
+           />
+         )}
          {artData.annotations?.map((ann) => (
              <TopicChip
                 key={ann.id}
@@ -387,17 +392,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 onClick={() => handleTopicClick(`I'm looking at the "${ann.label}" area of this artwork. What's special about it? What should I notice?`)}
              />
          ))}
-         <TopicChip
-           label={t('chat.catalanConnection', language)}
-           onClick={() => handleTopicClick(`How does "${artData.title}" connect to Catalan culture, history, or identity? What makes it significant here in Barcelona?`)}
-         />
+         {otherTopics.map((topic) => (
+           <TopicChip
+             key={topic.id}
+             label={topic.label[language]}
+             onClick={() => handleTopicClick(topic.prompt(artData))}
+           />
+         ))}
          <TopicChip
            label={t('chat.hiddenDetails', language)}
            onClick={() => handleTopicClick(`What hidden details, symbols, or secrets are in "${artData.title}" that most visitors miss? What should I look for if I look closely?`)}
-         />
-         <TopicChip
-           label={t('chat.compareStyles', language)}
-           onClick={() => handleTopicClick(`How does the style of "${artData.title}" compare to other movements represented here at MNAC? How does it fit into the broader art history on display?`)}
          />
       </div>
 

@@ -3,6 +3,8 @@ export const config = {
   projectId: process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT_ID || '',
   bucket: process.env.GCS_BUCKET || '',
   firestoreDb: process.env.FIRESTORE_DATABASE || '(default)',
+  // Museum profile id (see museums/index.ts); unknown ids fall back to 'generic'
+  museumId: (process.env.MUSEUM_ID || 'generic').trim().toLowerCase(),
   vertex: {
     regionText: process.env.VERTEX_REGION_TEXT || 'global',
     regionLive: process.env.VERTEX_REGION_LIVE || 'us-central1',

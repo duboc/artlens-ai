@@ -75,6 +75,18 @@ See [`.env.example`](.env.example) for all available variables. The two required
 | `GOOGLE_CLOUD_PROJECT` | Your GCP project ID |
 | `GCS_BUCKET` | Cloud Storage bucket name |
 
+## Museum Profiles
+
+The experience is tailored per venue by a **museum profile** in [`museums/`](museums/): official name, guide context (building, collection highlights), guidance for the guide, an identification hint, museum-specific chat topic chips (localized), and the welcome-screen event label. The generic profile works anywhere without assuming a venue.
+
+| Profile | `MUSEUM_ID` | Event label |
+|---------|-------------|-------------|
+| Museo Nacional Centro de Arte Reina Sofía (Madrid) | `reina-sofia` | Madrid 2026 |
+| Museu Nacional d'Art de Catalunya (Barcelona) | `mnac` | Barcelona 2026 |
+| Any museum | `generic` (default) | — |
+
+Select the profile per deployment with `MUSEUM_ID` in `.env`; the frontend reads it from `GET /api/config` at startup. For testing, `?museum=<id>` in the URL overrides it. To add a venue, copy `museums/reinaSofia.ts`, adjust the content, and register it in `museums/index.ts`.
+
 ## Deploying & Access
 
 `./deploy.sh` deploys to Cloud Run from source. By default the service is **public** — visitors at the event open the URL and onboard with name + email; no Google sign-in is required. The `X-User-Id` header identifies the app-level user.

@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { IdentifyResponse, Language, UserContext, Persona } from '../types';
 import { createPcmBlob, decodeAudioData, base64ToUint8Array } from '../utils/audioUtils';
+import { getMuseum, guideIntro, museumContextBlock } from '../museums';
 
 const VOICE_MAP: Record<string, string> = {
   guide: 'Zephyr',
@@ -205,19 +206,13 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
         ? 'Keep your responses concise — 2-3 sentences maximum. Be direct and focused.'
         : 'Provide rich, engaging explanations. Share stories, connections, and vivid details that bring the artwork to life.';
 
+      const museum = getMuseum();
       const systemInstruction = `
           ${personaInstruction}
-          You are the museum guide for the Google Cloud AI Leadership Academy visit to the Museu Nacional d'Art de Catalunya (MNAC). Address the user as "${user.name}".
+          ${guideIntro(museum)} Address the user as "${user.name}".
           ${lengthInstruction}
 
-          MUSEUM CONTEXT:
-          You are guiding visitors at the Museu Nacional d'Art de Catalunya (MNAC), housed in the Palau Nacional on Montjuïc hill in Barcelona. MNAC holds the world's most important collection of Romanesque murals (transferred from Pyrenean churches), alongside outstanding Gothic altarpieces, Renaissance and Baroque works, and a celebrated Modern Art collection featuring Catalan Modernisme masters (Gaudí, Casas, Rusiñol, Mir). The Thyssen-Bornemisza collection adds European breadth.
-
-          When relevant:
-          - Connect the artwork to MNAC's broader collection and Catalan cultural identity.
-          - Suggest related works the visitor might find nearby in the museum.
-          - Mention the physical space — "in the next gallery," "upstairs in the Modern Art wing."
-          - Speak as if walking alongside the visitor: "if you look closely," "notice how the artist..."
+          ${museumContextBlock(museum)}
 
           THE ARTWORK:
           Title: ${contextData.title}
@@ -235,6 +230,7 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
 
           BEHAVIOR:
           - Speak naturally and conversationally — you are a companion, not a textbook.
+          - Speak as if walking alongside the visitor: "if you look closely," "notice how the artist..."
           - Open with something that hooks attention: a surprising fact, a question, or a vivid detail.
           - When the visitor asks about something you don't know, say so honestly and suggest what they could explore instead.
           - Speak ONLY in ${langInstruction}.

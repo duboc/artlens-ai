@@ -1,5 +1,6 @@
 import { IdentifyResponse, GroundingSource, ArtData, DeepArtData, Language, Annotation } from '../types';
 import { apiPost } from './apiClient';
+import { getMuseum } from '../museums';
 
 // Helper to clean and parse JSON from model response
 const parseJSON = (text: string): any => {
@@ -66,6 +67,7 @@ const getLanguageName = (lang: Language): string => {
 
 export const identifyArtwork = async (base64Image: string, language: Language): Promise<IdentifyResponse> => {
   const langName = getLanguageName(language);
+  const museumHint = getMuseum().identifyHint;
   try {
     const imagePart = {
       inlineData: {
@@ -90,7 +92,7 @@ export const identifyArtwork = async (base64Image: string, language: Language): 
       "country": The artist's nationality.
       "funFact": An interesting trivia point.
 
-      IMPORTANT:
+      ${museumHint ? `CONTEXT: ${museumHint}\n\n` : ''}IMPORTANT:
       - Use Google Search to verify details.
       - Provide all string values in ${langName}.
       - The JSON keys must remain in English.

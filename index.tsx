@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { loadMuseum } from './museums';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -8,8 +9,13 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+
+// Resolve the museum profile (MUSEUM_ID / ?museum=) before the first render so
+// prompts and branding are consistent. loadMuseum() never rejects.
+loadMuseum().then(() => {
+  root.render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+});

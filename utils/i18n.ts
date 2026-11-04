@@ -292,21 +292,6 @@ const translations: Record<string, Record<Language, string>> = {
     pt: 'Conte uma história',
     es: 'Cuéntame una historia',
   },
-  'chat.whatsNearby': {
-    en: "What's nearby?",
-    pt: 'O que tem por perto?',
-    es: '¿Qué hay cerca?',
-  },
-  'chat.catalanConnection': {
-    en: 'Catalan Connection',
-    pt: 'Conexão Catalã',
-    es: 'Conexión Catalana',
-  },
-  'chat.compareStyles': {
-    en: 'Compare Styles',
-    pt: 'Comparar Estilos',
-    es: 'Comparar Estilos',
-  },
   'chat.hiddenDetails': {
     en: 'Hidden Details',
     pt: 'Detalhes Ocultos',
