@@ -98,7 +98,7 @@ export const identifyArtwork = async (base64Image: string, language: Language): 
     `;
 
     const visualPrompt = `
-      Analyze the visual style and topography of this image.
+      Analyze the visual style of the artwork in this image.
       Return a JSON object with keys: "style", "description", "annotations".
 
       Structure:
@@ -107,16 +107,14 @@ export const identifyArtwork = async (base64Image: string, language: Language): 
         "description": "Concise visual description (max 2 sentences).",
         "annotations": [
           {
-            "label": "Region Name",
-            "description": "Significance of this region.",
-            "box_2d": [ymin, xmin, ymax, xmax]
+            "label": "Short name of a notable detail (2-4 words)",
+            "description": "Why this detail is significant."
           }
         ]
       }
 
       Details:
-      - "box_2d": Array of 4 integers [ymin, xmin, ymax, xmax] on a 0-1000 scale.
-      - Identify 4-5 distinct, interesting regions.
+      - Identify 3-4 distinct, interesting details a visitor should notice.
 
       IMPORTANT:
       - Provide string values in ${langName}.
@@ -143,12 +141,12 @@ export const identifyArtwork = async (base64Image: string, language: Language): 
 
     // Process Annotations with IDs and validation
     const annotations: Annotation[] = (visualData?.annotations || [])
-      .filter((ann: any) => ann.box_2d && Array.isArray(ann.box_2d) && ann.box_2d.length === 4)
+      .filter((ann: any) => ann && typeof ann.label === 'string' && ann.label.trim())
+      .slice(0, 4)
       .map((ann: any, index: number) => ({
         id: `ann-${index}-${Date.now()}`,
-        label: ann.label || 'Details',
+        label: ann.label.trim(),
         description: ann.description || '',
-        box_2d: ann.box_2d
       }));
 
     // Merge Sources from both responses

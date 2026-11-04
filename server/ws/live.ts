@@ -1,17 +1,11 @@
 import WebSocket, { WebSocketServer } from 'ws';
 import http from 'http';
 import { config } from '../config.js';
-import { getAccessToken, getLiveWebSocketUrl } from '../services/vertexai.js';
+import { getAccessToken, getLiveModelPath, getLiveWebSocketUrl } from '../services/vertexai.js';
 import { log } from '../utils/logger.js';
 
 const SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
-
-// Build full Vertex AI model resource path from a short model name
-function resolveModelPath(model?: string): string {
-  const modelName = model || config.vertex.modelLive;
-  if (modelName.startsWith('projects/')) return modelName;
-  return `projects/${config.projectId}/locations/${config.vertex.regionLive}/publishers/google/models/${modelName}`;
-}
+const MAX_PENDING_MESSAGES = 200; // audio chunks buffered while upstream connects
 
 export function attachWebSocketServer(server: http.Server) {
   const wss = new WebSocketServer({ server, path: '/ws/live' });
@@ -19,12 +13,15 @@ export function attachWebSocketServer(server: http.Server) {
   wss.on('connection', (browserWs: WebSocket) => {
     let upstreamWs: WebSocket | null = null;
     let sessionTimer: NodeJS.Timeout | null = null;
+    // Messages received from the browser before the upstream socket is open
+    const pending: string[] = [];
 
     const cleanup = () => {
       if (sessionTimer) {
         clearTimeout(sessionTimer);
         sessionTimer = null;
       }
+      pending.length = 0;
       if (upstreamWs) {
         if (upstreamWs.readyState === WebSocket.OPEN || upstreamWs.readyState === WebSocket.CONNECTING) {
           upstreamWs.close();
@@ -52,7 +49,7 @@ export function attachWebSocketServer(server: http.Server) {
         isFirstMessage = false;
 
         try {
-          // Parse setup message and inject full model resource path
+          // Parse setup message and inject the server-configured model
           let setupMsg: any;
           try {
             setupMsg = JSON.parse(message);
@@ -61,23 +58,27 @@ export function attachWebSocketServer(server: http.Server) {
             return;
           }
 
-          if (setupMsg.setup) {
-            const requestedModel = setupMsg.setup.model;
-            setupMsg.setup.model = resolveModelPath(setupMsg.setup.model);
-            log.info('ws', `→ Live session starting`, { model: requestedModel });
+          if (!setupMsg.setup || typeof setupMsg.setup !== 'object') {
+            browserWs.close(1008, 'First message must be a setup message');
+            return;
           }
+          // The model is always chosen server-side (MODEL_LIVE)
+          setupMsg.setup.model = getLiveModelPath();
+          log.info('ws', `→ Live session starting`, { model: config.vertex.modelLive });
           const modifiedMessage = JSON.stringify(setupMsg);
 
           // Get ADC token and connect to Vertex AI
           const token = await getAccessToken();
-          const serviceUrl = getLiveWebSocketUrl();
-          const wsUrl = `${serviceUrl}?access_token=${encodeURIComponent(token)}`;
-
-          upstreamWs = new WebSocket(wsUrl);
+          upstreamWs = new WebSocket(getLiveWebSocketUrl(), {
+            headers: { Authorization: `Bearer ${token}` },
+          });
 
           upstreamWs.on('open', () => {
-            // Forward the modified setup message to Vertex AI
+            // Forward the modified setup message, then anything queued meanwhile
             upstreamWs!.send(modifiedMessage);
+            for (const queued of pending.splice(0)) {
+              upstreamWs!.send(queued);
+            }
           });
 
           upstreamWs.on('message', (upstreamData: WebSocket.Data) => {
@@ -111,9 +112,11 @@ export function attachWebSocketServer(server: http.Server) {
         return;
       }
 
-      // Subsequent messages: forward to Vertex AI
+      // Subsequent messages: forward to Vertex AI (queue until upstream is open)
       if (upstreamWs && upstreamWs.readyState === WebSocket.OPEN) {
         upstreamWs.send(message);
+      } else if (pending.length < MAX_PENDING_MESSAGES) {
+        pending.push(message);
       }
     });
 

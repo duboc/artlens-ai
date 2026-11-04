@@ -23,32 +23,26 @@ export async function getAccessToken(): Promise<string> {
   return tokenResponse.token;
 }
 
-export function getGenerateUrl(model?: string): string {
-  const region = config.vertex.regionText;
-  const modelName = model || config.vertex.modelText;
-  const host = region === 'global'
-    ? 'aiplatform.googleapis.com'
-    : `${region}-aiplatform.googleapis.com`;
-  return `https://${host}/v1/projects/${config.projectId}/locations/${region}/publishers/google/models/${modelName}:generateContent`;
-}
-
-export function getImageGenerateUrl(): string {
-  const region = config.vertex.regionImage;
-  const model = config.vertex.modelImage;
+function generateContentUrl(region: string, model: string): string {
   const host = region === 'global'
     ? 'aiplatform.googleapis.com'
     : `${region}-aiplatform.googleapis.com`;
   return `https://${host}/v1/projects/${config.projectId}/locations/${region}/publishers/google/models/${model}:generateContent`;
 }
 
-export function getTtsStreamUrl(): string {
-  const region = config.vertex.regionTts;
-  const model = config.vertex.modelTts;
-  const host = `${region}-aiplatform.googleapis.com`;
-  return `https://${host}/v1/projects/${config.projectId}/locations/${region}/publishers/google/models/${model}:streamGenerateContent?alt=sse`;
+export function getGenerateUrl(model: string = config.vertex.modelText): string {
+  return generateContentUrl(config.vertex.regionText, model);
+}
+
+export function getImageGenerateUrl(): string {
+  return generateContentUrl(config.vertex.regionImage, config.vertex.modelImage);
 }
 
 export function getLiveWebSocketUrl(): string {
   const region = config.vertex.regionLive;
   return `wss://${region}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1beta1.LlmBidiService/BidiGenerateContent`;
+}
+
+export function getLiveModelPath(): string {
+  return `projects/${config.projectId}/locations/${config.vertex.regionLive}/publishers/google/models/${config.vertex.modelLive}`;
 }

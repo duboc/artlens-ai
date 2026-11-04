@@ -15,7 +15,6 @@ export interface Annotation {
   id: string;
   label: string;
   description: string;
-  box_2d: [number, number, number, number]; // ymin, xmin, ymax, xmax (0-1000 scale)
 }
 
 export interface ArtData {

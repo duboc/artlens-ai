@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getAccessToken, getImageGenerateUrl } from '../services/vertexai';
 import { downloadBuffer, uploadBuffer } from '../services/storage';
 import { getFirestore, FieldValue } from '../services/firestore';
+import { config } from '../config';
 import { log } from '../utils/logger';
 
 const router = Router();
@@ -64,6 +65,8 @@ router.post('/', async (req: Request, res: Response) => {
           responseModalities: ['IMAGE', 'TEXT'],
         },
       }),
+      // Image generation is slower than text; allow 2x the text timeout
+      signal: AbortSignal.timeout(config.vertex.requestTimeoutMs * 2),
     });
 
     const responseText = await apiResponse.text();
@@ -77,7 +80,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     if (!apiResponse.ok) {
-      log.error('generate-image', `← ${apiResponse.status} in ${Date.now() - startTime}ms`, {
+      log.error('generate-image', `← ${apiResponse.status} from ${config.vertex.modelImage} in ${Date.now() - startTime}ms`, {
         error: result?.error?.message || responseText.slice(0, 200),
       });
       res.status(502).json({ error: 'Image generation failed' });

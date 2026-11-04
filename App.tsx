@@ -240,7 +240,6 @@ const App: React.FC = () => {
           });
           scanId = scanResult.scanId;
           setCurrentScanId(scanId);
-          addToHistory(scanId, response);
 
           // Upload captured image
           try {
@@ -257,6 +256,9 @@ const App: React.FC = () => {
           } catch (err) {
             console.error('Scan image upload failed:', err);
           }
+
+          // Add to history only after the upload so the thumbnail URL resolves
+          addToHistory(scanId, response);
         } catch (err) {
           console.error('Failed to persist scan:', err);
         }
