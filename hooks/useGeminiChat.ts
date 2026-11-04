@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { IdentifyResponse, Language, ChatMessage } from '../types';
 import { apiPost, apiGet } from '../services/apiClient';
+import { getMuseum, museumContextBlock } from '../museums';
 
 export const useGeminiChat = (artData: IdentifyResponse, language: Language, explanationLength: 'brief' | 'detailed' = 'detailed', scanId?: string | null) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -43,7 +44,8 @@ export const useGeminiChat = (artData: IdentifyResponse, language: Language, exp
     const lengthHint = explanationLength === 'brief'
       ? ' Keep responses concise — 2-3 sentences maximum.'
       : '';
-    return `You are an expert art historian. User is looking at: "${artData.title}" by ${artData.artist}. Respond in ${langInstruction}.${lengthHint}`;
+    const museum = getMuseum();
+    return `You are an expert art historian and museum guide. ${museumContextBlock(museum)}\n\nUser is looking at: "${artData.title}" by ${artData.artist}. Respond in ${langInstruction}.${lengthHint}`;
   });
 
   // Use a ref to always have access to the latest messages without re-creating sendMessage

@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { IdentifyResponse, Language, Persona } from '../types';
 import { base64ToUint8Array, decodeAudioData } from '../utils/audioUtils';
+import { getMuseum, guideIntro } from '../museums';
 
 interface UseNarrationReturn {
   isGenerating: boolean;
@@ -80,7 +81,8 @@ export const useNarration = (): UseNarrationReturn => {
     const personaDesc = PERSONA_DESCRIPTIONS[persona] || PERSONA_DESCRIPTIONS.guide;
     const langName = LANGUAGE_NAMES[language] || 'English';
 
-    const systemInstruction = `You are the museum guide for the Google Cloud AI Leadership Academy visit to the Museu Nacional d'Art de Catalunya (MNAC).
+    const museum = getMuseum();
+    const systemInstruction = `${guideIntro(museum)}${museum.guideContext ? `\n\n${museum.guideContext}` : ''}
 
 Personality: ${personaDesc}
 

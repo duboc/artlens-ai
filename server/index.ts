@@ -47,6 +47,11 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
+// Public runtime config for the frontend (no auth)
+app.get('/api/config', (_req, res) => {
+  res.json({ museumId: config.museumId });
+});
+
 // POST /api/users — no auth (creates the user)
 // GET/PATCH /api/users/:userId — auth handled inside the router
 // GET /api/users/:userId/scans — auth handled inside the router
@@ -79,6 +84,8 @@ attachWebSocketServer(server);
 server.listen(config.port, () => {
   log.info('server', `Listening on port ${config.port}`, {
     project: config.projectId,
+    museum: config.museumId,
+    firestoreDb: config.firestoreDb,
     models: {
       text: config.vertex.modelText,
       textFallback: config.vertex.modelTextFallback,

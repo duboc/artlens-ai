@@ -1,11 +1,13 @@
 import React from 'react';
 import { Language } from '../types';
+import { getMuseum } from '../museums';
 
 interface LanguageSelectorProps {
   onSelect: (lang: Language) => void;
 }
 
 export const LanguageSelector: React.FC<LanguageSelectorProps> = ({ onSelect }) => {
+  const { eventLabel } = getMuseum();
   return (
     <div className="absolute inset-0 z-50 bg-[var(--bg)] flex flex-col px-6 py-12 pt-safe pb-safe">
 
@@ -43,7 +45,9 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({ onSelect }) 
           <span>·</span>
           <span>IESE Business School</span>
         </div>
-        <p className="text-secondary/25 text-[10px] font-mono tracking-wider">Barcelona 2026</p>
+        {eventLabel && (
+          <p className="text-secondary/60 text-xs font-mono tracking-wider">{eventLabel}</p>
+        )}
       </div>
     </div>
   );
