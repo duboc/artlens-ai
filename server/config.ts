@@ -6,13 +6,16 @@ export const config = {
   vertex: {
     regionText: process.env.VERTEX_REGION_TEXT || 'global',
     regionLive: process.env.VERTEX_REGION_LIVE || 'us-central1',
-    modelText: process.env.MODEL_TEXT || 'gemini-3.1-flash-lite-preview',
-    modelTextFallback: process.env.MODEL_TEXT_FALLBACK || 'gemini-3-flash-preview',
-    modelLive: process.env.MODEL_LIVE || 'gemini-live-2.5-flash-native-audio',
-    modelImage: process.env.MODEL_IMAGE || 'gemini-3.1-flash-image-preview',
     regionImage: process.env.VERTEX_REGION_IMAGE || 'global',
-    modelTts: process.env.MODEL_TTS || 'gemini-2.5-flash-tts',
-    regionTts: process.env.VERTEX_REGION_TTS || 'us-central1',
+    modelText: process.env.MODEL_TEXT || 'gemini-3.5-flash-lite',
+    modelTextFallback: process.env.MODEL_TEXT_FALLBACK || 'gemini-3.8-flash',
+    modelLive: process.env.MODEL_LIVE || 'gemini-3.8-live',
+    modelImage: process.env.MODEL_IMAGE || 'gemini-3.1-flash-image',
+    // Default thinking level for text calls (MINIMAL | LOW | MEDIUM | HIGH).
+    // LOW keeps identification fast; set to '' to use the model default.
+    thinkingLevel: process.env.THINKING_LEVEL ?? 'LOW',
+    // Upper bound for a single Vertex AI REST call.
+    requestTimeoutMs: parseInt(process.env.VERTEX_TIMEOUT_MS || '45000', 10),
   },
   allowedOrigins: (process.env.ALLOWED_ORIGINS || 'http://localhost:3000').split(','),
 };

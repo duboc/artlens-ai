@@ -1,4 +1,5 @@
 import { Storage } from '@google-cloud/storage';
+import { pipeline } from 'stream/promises';
 import { config } from '../config';
 
 let storage: Storage | null = null;
@@ -45,23 +46,6 @@ export async function downloadBuffer(path: string): Promise<Buffer> {
   return contents;
 }
 
-export async function getSignedUrl(path: string): Promise<string> {
-  const bucket = getBucket();
-  const file = bucket.file(path);
-
-  const [exists] = await file.exists();
-  if (!exists) {
-    throw new Error('File not found');
-  }
-
-  const [url] = await file.getSignedUrl({
-    action: 'read',
-    expires: Date.now() + 15 * 60 * 1000, // 15 minutes
-  });
-
-  return url;
-}
-
 // Stream a file from GCS to an HTTP response (works with any ADC credential)
 export async function streamToResponse(
   path: string,
@@ -70,14 +54,22 @@ export async function streamToResponse(
   const bucket = getBucket();
   const file = bucket.file(path);
 
-  const [exists] = await file.exists();
-  if (!exists) {
-    throw new Error('File not found');
+  // getMetadata() rejects with code 404 when the object doesn't exist
+  let metadata;
+  try {
+    [metadata] = await file.getMetadata();
+  } catch (err: any) {
+    if (err?.code === 404) throw new Error('File not found');
+    throw err;
   }
 
-  const [metadata] = await file.getMetadata();
   res.set('Content-Type', metadata.contentType || 'application/octet-stream');
   res.set('Cache-Control', 'private, max-age=3600');
 
-  file.createReadStream().pipe(res);
+  // pipeline() destroys both streams on error instead of emitting an
+  // unhandled 'error' event (which would crash the process).
+  await pipeline(file.createReadStream(), res).catch((err) => {
+    if (!res.headersSent) throw err;
+    res.destroy(err);
+  });
 }

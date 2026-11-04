@@ -258,7 +258,7 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
         ws.onopen = () => {
           const setupMessage = {
             setup: {
-              model: 'gemini-live-2.5-flash-native-audio',
+              // model is injected server-side (MODEL_LIVE)
               generation_config: {
                 response_modalities: ['AUDIO'],
                 speech_config: {

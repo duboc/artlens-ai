@@ -75,36 +75,34 @@ See [`.env.example`](.env.example) for all available variables. The two required
 | `GOOGLE_CLOUD_PROJECT` | Your GCP project ID |
 | `GCS_BUCKET` | Cloud Storage bucket name |
 
-## Identity-Aware Proxy (IAP)
+## Deploying & Access
 
-In production the Cloud Run service sits behind [Identity-Aware Proxy](https://cloud.google.com/iap). IAP is the **only** access layer — every request is authenticated by Google before it reaches the container. The existing `X-User-Id` header continues to identify the app-level user inside the IAP perimeter; the two layers are independent.
+`./deploy.sh` deploys to Cloud Run from source. By default the service is **public** — visitors at the event open the URL and onboard with name + email; no Google sign-in is required. The `X-User-Id` header identifies the app-level user.
 
-| Script | When to run | What it does |
-|--------|-------------|--------------|
-| [`deploy.sh`](deploy.sh) | Every deploy | Deploys to Cloud Run with `--no-allow-unauthenticated --iap` and grants `roles/run.invoker` to the IAP service agent |
-| [`setup-iap.sh`](setup-iap.sh) | Once per project | Enables `iap.googleapis.com`, creates the OAuth brand "ArtLens AI" and an IAP OAuth client, applies `cookieDomain` |
-| [`configure-iap.sh`](configure-iap.sh) | Once per audience (and any time access changes) | Grants/revokes `roles/iap.httpsResourceAccessor` for users or domains |
+| Mode | Command | Access |
+|------|---------|--------|
+| Public (default) | `./deploy.sh` | `--allow-unauthenticated --no-iap` |
+| Restricted | `./deploy.sh --iap` | Behind [Identity-Aware Proxy](https://cloud.google.com/iap); grants `roles/run.invoker` to the IAP service agent |
 
-Common operations:
+Every deploy also sets `--timeout 3600` (Cloud Run's request timeout caps WebSocket lifetime, and Live voice sessions can last up to 15 min), `--min-instances 1`, `--session-affinity`, and passes `.env` through an env-vars file so comma-separated values like `ALLOWED_ORIGINS` are preserved.
+
+### Optional: IAP
+
+To restrict access (e.g. for internal testing before the event):
 
 ```bash
-# First deploy (run once in this order)
-./deploy.sh
-./setup-iap.sh
+./deploy.sh --iap
+./setup-iap.sh                           # Once per project: OAuth brand + client
 ./configure-iap.sh                       # Grant google.com domain (default)
-
-# Subsequent deploys — only deploy.sh
-./deploy.sh
-
-# Manage access
 ./configure-iap.sh --user alice@google.com
 ./configure-iap.sh --status
-./configure-iap.sh --remove --user alice@google.com
 ```
 
-Required IAM on the operator: `roles/run.admin`, `roles/iam.serviceAccountUser`, `roles/iap.admin`, `roles/serviceusage.serviceUsageAdmin`.
+Required IAM on the operator for IAP: `roles/run.admin`, `roles/iam.serviceAccountUser`, `roles/iap.admin`, `roles/serviceusage.serviceUsageAdmin`.
 
-When running the API test scripts against the deployed URL, sign in with an account that has `roles/iap.httpsResourceAccessor` on the service — the scripts attach an IAP identity token automatically:
+Run `./deploy.sh` (without `--iap`) to make the service public again.
+
+When running the API test scripts against an IAP-protected URL, sign in with an account that has `roles/iap.httpsResourceAccessor` — the scripts attach an IAP identity token automatically:
 
 ```bash
 gcloud auth login
@@ -115,7 +113,7 @@ BASE_URL=https://artlens-ai-xxxxx.run.app ./scripts/test-all.sh
 
 - **Frontend:** React 19, Tailwind CSS, TypeScript, Vite
 - **Backend:** Express, WebSocket (`ws`), TypeScript, `tsx`
-- **AI:** Vertex AI (Gemini 3 Flash, Gemini Live 2.5 Flash, Gemini 2.0 Flash image generation)
+- **AI:** Vertex AI — `gemini-3.5-flash-lite` (text, fallback `gemini-3.8-flash`), `gemini-3.8-live` (voice + narration), `gemini-3.1-flash-image` (portraits). All model names are configured server-side; see `.env.example`.
 - **Storage:** Firestore (Native mode), Cloud Storage
 - **Auth:** UUID-based via `X-User-Id` header + Firestore validation
 
