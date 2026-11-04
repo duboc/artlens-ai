@@ -2,8 +2,12 @@ import React, { useRef, useEffect, useState } from 'react';
 import { IdentifyResponse, Language, UserContext } from '../types';
 import { ChatWindow } from './ChatWindow';
 import { preWarmAudio } from '../hooks/useGeminiLive';
-import { t } from '../utils/i18n';
+import { t, tf } from '../utils/i18n';
 import { createArtworkShareCard, shareOrDownload } from '../utils/shareCard';
+import { QuizPanel } from './game/QuizPanel';
+import { AiTracePanel } from './game/AiTracePanel';
+import { QuizIcon } from './game/icons';
+import { QUIZ_MAX_POINTS } from '../museums/scoring';
 
 interface AnalysisResultCardProps {
   data: IdentifyResponse;
@@ -25,6 +29,10 @@ interface AnalysisResultCardProps {
   narrationIsGenerating?: boolean;
   narrationScript?: string | null;
   onStopNarration?: () => void;
+  /** Reports when chat or quiz takes over the screen (the tab bar hides). */
+  onImmersiveChange?: (immersive: boolean) => void;
+  /** New total after a quiz answer awards points. */
+  onPointsChange?: (totalPoints: number) => void;
 }
 
 const getPersonaLabel = (persona: string, language: Language): string => {
@@ -34,14 +42,6 @@ const getPersonaLabel = (persona: string, language: Language): string => {
     blogger: t('result.blogger', language),
   };
   return map[persona] || map.guide;
-};
-
-const getDomainFromUrl = (url: string): string => {
-  try {
-    return new URL(url).hostname.replace('www.', '');
-  } catch {
-    return 'source';
-  }
 };
 
 const handleShare = async (data: IdentifyResponse, imageUrl: string | null) => {
@@ -77,9 +77,20 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
   narrationIsGenerating = false,
   narrationScript = null,
   onStopNarration,
+  onImmersiveChange,
+  onPointsChange,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isQuizOpen, setIsQuizOpen] = useState(false);
+  const isImmersive = isChatOpen || isQuizOpen;
+
+  useEffect(() => {
+    onImmersiveChange?.(isImmersive);
+  }, [isImmersive, onImmersiveChange]);
+
+  // Leaving the card (unmount) always restores the tab bar
+  useEffect(() => () => onImmersiveChange?.(false), [onImmersiveChange]);
   const [isMinimized, setIsMinimized] = useState(false);
   const [showNarrationCta, setShowNarrationCta] = useState(false);
   const prevNarrationPlaying = useRef(false);
@@ -113,7 +124,7 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
   };
 
   // Minimized "Pill" View — warm glass with gold accent
-  if (isMinimized && !isChatOpen) {
+  if (isMinimized && !isImmersive) {
       return (
           <div className="w-full max-w-lg mx-auto pointer-events-auto animate-slide-up mb-4 px-4">
               <div
@@ -158,23 +169,35 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
   // Expanded / Chat View
   return (
     <div className={`w-full max-w-lg mx-auto transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] pointer-events-auto mb-0
-        ${isChatOpen ? 'h-[85vh]' : 'h-auto'}
+        ${isImmersive ? 'h-[85vh]' : 'h-auto'}
     `}>
       <div className={`bg-black/70 backdrop-blur-2xl border-t border-x border-white/[0.08] shadow-2xl rounded-t-[2.5rem] overflow-hidden flex flex-col transition-all duration-500
-          ${isChatOpen ? 'h-full rounded-b-none' : 'max-h-[60vh] rounded-b-[2.5rem] mb-6'}
+          ${isImmersive ? 'h-full rounded-b-none' : 'max-h-[60vh] rounded-b-[2.5rem] mb-6'}
       `}>
 
         {/* Drag Handle */}
-        {!isChatOpen && (
-          <div className="w-full flex justify-center pt-4 pb-2 cursor-pointer touch-none group" onClick={() => setIsMinimized(true)}>
-              <div className="w-12 h-1 bg-secondary/30 rounded-full group-hover:bg-primary/50 transition-colors duration-300" />
-          </div>
+        {!isImmersive && (
+          <button
+              type="button"
+              aria-label="Minimize"
+              className="w-full flex justify-center pt-4 pb-2 cursor-pointer touch-none group"
+              onClick={() => setIsMinimized(true)}
+          >
+              <span className="block w-12 h-1 bg-secondary/30 rounded-full group-hover:bg-primary/50 transition-colors duration-300" />
+          </button>
         )}
 
         {/* Content */}
-        <div className={`flex flex-col flex-1 min-h-0 ${isChatOpen ? '' : 'overflow-y-auto no-scrollbar'}`}>
+        <div className={`flex flex-col flex-1 min-h-0 ${isImmersive ? '' : 'overflow-y-auto no-scrollbar'}`}>
 
-          {isChatOpen ? (
+          {isQuizOpen && scanId ? (
+            <QuizPanel
+                scanId={scanId}
+                language={language}
+                onClose={() => setIsQuizOpen(false)}
+                onPointsChange={onPointsChange}
+            />
+          ) : isChatOpen ? (
             <ChatWindow
                 key={`${data.title}-${language}`}
                 artData={data}
@@ -273,6 +296,26 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
                 </button>
               </div>
 
+              {/* Quiz */}
+              <button
+                type="button"
+                onClick={() => { if (onStopNarration) onStopNarration(); setIsQuizOpen(true); }}
+                disabled={!scanId}
+                className="w-full min-h-[48px] mb-6 px-5 rounded-full border border-primary/30 text-[var(--text)] text-sm flex items-center justify-between gap-3 hover:bg-primary/10 transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="flex items-center gap-2 whitespace-nowrap">
+                  <QuizIcon className="w-5 h-5 text-primary" />
+                  {t('quiz.cta', language)}
+                </span>
+                {scanId ? (
+                  <span className="font-mono tabular text-xs text-secondary whitespace-nowrap">
+                    {tf('quiz.ctaPoints', language, { points: QUIZ_MAX_POINTS })}
+                  </span>
+                ) : (
+                  <span className="text-xs text-secondary whitespace-nowrap">{t('quiz.saving', language)}</span>
+                )}
+              </button>
+
               {/* Generate Me Button */}
               {onGenerateMe && hasSelfie && (
                 <button
@@ -357,25 +400,8 @@ export const AnalysisResultCard: React.FC<AnalysisResultCardProps> = ({
                 </div>
               ) : null}
 
-              {/* Sources — domain chips */}
-              {data.sources.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-white/[0.08]">
-                  <p className="text-[10px] font-mono text-secondary/40 mb-2 uppercase tracking-wider">{t('result.sources', language)}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {data.sources.slice(0, 3).map((source, i) => (
-                      <a
-                        key={i}
-                        href={source.uri}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="min-h-auto text-[10px] font-mono text-primary/60 bg-primary/5 border border-primary/10 px-2.5 py-1 rounded-full hover:bg-primary/10 transition-colors duration-300"
-                      >
-                        {source.title || getDomainFromUrl(source.uri || '')}
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {/* How the AI thought (model, time, searches, sources) */}
+              <AiTracePanel trace={data.aiTrace} sources={data.sources} language={language} />
             </div>
           )}
         </div>

@@ -1,6 +1,6 @@
 # ArtLens AI
 
-A mobile-first, camera-based art identification app built for the **Google Cloud AI Leadership Academy** at MNAC (Museu Nacional d'Art de Catalunya). Point your camera at any artwork to instantly identify it, explore its history, and chat with an AI art expert.
+A mobile-first, camera-based art identification app built for the **Google Cloud AI Leadership Academy**, currently set up for the **Museo Reina Sofía** in Madrid (and reusable in any museum via [museum profiles](#museum-profiles)). Point your camera at any artwork to instantly identify it, explore its history, chat with an AI art expert, complete missions and climb the ranking.
 
 ## Features
 
@@ -87,6 +87,31 @@ The experience is tailored per venue by a **museum profile** in [`museums/`](mus
 
 Select the profile per deployment with `MUSEUM_ID` in `.env`; the frontend reads it from `GET /api/config` at startup. For testing, `?museum=<id>` in the URL overrides it. To add a venue, copy `museums/reinaSofia.ts`, adjust the content, and register it in `museums/index.ts`.
 
+## Game Layer: Missions, Quiz, Ranking
+
+Individual challenges on top of the scan flow, scored **server-side** so the ranking can't be edited from the browser. Navigation is a bottom tab bar: **Scan · Missions · Ranking · Profile**.
+
+| Feature | How it works |
+|---------|--------------|
+| **Missions** | Each museum profile defines missions (`missions` in `museums/*.ts`, e.g. 8 for the Reina Sofía). After a scan is saved, Gemini judges which open missions the identified artwork satisfies (JSON schema, temperature 0). |
+| **Quiz** | 3 multiple-choice questions per scan, generated from the scan and its deep analysis in the visitor's language. Answers are checked on the server; options are shuffled server-side. |
+| **Ranking** | Per-museum individual ranking (top 50 + your position), first name + last initial only. Auto-refreshes every 30 s. |
+| **How the AI thought** | Expandable panel on every result: model (and whether the backup model answered), response time, reasoning level, the model's own confidence and evidence, Google searches it ran, sources, and the museum context it was given. |
+
+Scoring (`museums/scoring.ts`): new artwork +10 · mission +100–150 · correct quiz answer +20 · perfect quiz +20 bonus. Re-scanning the same artwork earns nothing.
+
+API (all require `X-User-Id`; `?museum=` follows the visitor's profile):
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /api/game/scans/:scanId/award` | Score a saved scan (idempotent) → `{ points, newArtwork, missions, totalPoints }` |
+| `GET /api/game/missions` | Mission status + total points |
+| `GET /api/game/leaderboard` | Ranking + your position |
+| `POST /api/game/quiz/:scanId` | Get or create the scan's quiz (no answers included) |
+| `POST /api/game/quiz/:scanId/answer` | `{ questionIndex, choice }` → correct answer, explanation, points |
+
+Firestore: `leaderboards/{museumId}/players/{userId}` (+ `artworks/` subcollection for de-duplication); quiz and awards live on `users/{userId}/scans/{scanId}`.
+
 ## Deploying & Access
 
 `./deploy.sh` deploys to Cloud Run from source. By default the service is **public** — visitors at the event open the URL and onboard with name + email; no Google sign-in is required. The `X-User-Id` header identifies the app-level user.
@@ -127,7 +152,7 @@ BASE_URL=https://artlens-ai-xxxxx.run.app ./scripts/test-all.sh
 - **Backend:** Express, WebSocket (`ws`), TypeScript, `tsx`
 - **AI:** Vertex AI — `gemini-3.5-flash-lite` (text, fallback `gemini-3.8-flash`), `gemini-3.8-live` (voice + narration), `gemini-3.1-flash-image` (portraits). All model names are configured server-side; see `.env.example`.
 - **Storage:** Firestore (Native mode), Cloud Storage
-- **Auth:** UUID-based via `X-User-Id` header + Firestore validation
+- **Auth:** UUID-based via `X-User-Id` header + Firestore validation (game points are computed only on the server)
 
 ## Project Structure
 

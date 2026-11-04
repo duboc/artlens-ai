@@ -228,6 +228,7 @@ router.get('/:userId/scans', authMiddleware, async (req: Request, res: Response)
           sources: data.sources || [],
           annotations: data.annotations || [],
           deepAnalysis: data.deepAnalysis || undefined,
+          aiTrace: data.aiTrace || undefined,
         },
       };
     });

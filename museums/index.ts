@@ -3,7 +3,7 @@ import { mnac } from './mnac';
 import { reinaSofia } from './reinaSofia';
 import { MuseumProfile } from './types';
 
-export type { MuseumProfile, MuseumTopic, LocalizedText, ArtworkRef } from './types';
+export type { MuseumProfile, MuseumTopic, Mission, LocalizedText, ArtworkRef } from './types';
 
 export const MUSEUMS: Record<string, MuseumProfile> = {
   [generic.id]: generic,
@@ -26,6 +26,11 @@ export function resolveMuseumId(queryId?: string | null, serverId?: string | nul
 }
 
 let current: MuseumProfile = generic;
+
+/** Look up a profile by id (falls back to generic). Safe to use on the server. */
+export function getMuseumById(id?: string | null): MuseumProfile {
+  return MUSEUMS[resolveMuseumId(id)];
+}
 
 export function getMuseum(): MuseumProfile {
   return current;

@@ -95,7 +95,7 @@
     </script>
     <style>
       :root {
-        --bg: #000000;
+        --bg: #0e1012;
         --surface: #1a1a1a;
         --surface-variant: #242424;
         --primary: #4285F4;
@@ -231,6 +231,26 @@
         font-size: 16px !important;
       }
 
+      /* Browser surfaces themed from the palette */
+      :focus-visible {
+        outline: 2px solid var(--primary);
+        outline-offset: 2px;
+      }
+      ::selection {
+        background: rgba(66, 133, 244, 0.35);
+        color: #ffffff;
+      }
+      .tabular {
+        font-variant-numeric: tabular-nums;
+      }
+      /* Award toast: the one authored motion of the game layer */
+      .award-toast {
+        animation: awardIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+      }
+      @keyframes awardIn {
+        from { opacity: 0; transform: translateY(-16px) scale(0.98); filter: blur(6px); }
+        to { opacity: 1; transform: none; filter: none; }
+      }
       /* Touch target helper */
       .touch-target {
         min-height: 44px;

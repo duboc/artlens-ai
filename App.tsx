@@ -8,11 +8,18 @@ import { OnboardingForm } from './components/OnboardingForm';
 import { ChatWindow } from './components/ChatWindow';
 import { GenerateModal } from './components/GenerateModal';
 import { Gallery } from './components/Gallery';
+import { BottomNav, Tab, BOTTOM_NAV_HEIGHT } from './components/game/BottomNav';
+import { MissionsPanel } from './components/game/MissionsPanel';
+import { RankingPanel } from './components/game/RankingPanel';
+import { ProfilePanel } from './components/game/ProfilePanel';
+import { AwardToast } from './components/game/AwardToast';
+import { fetchMissions, awardScan, MissionsState } from './services/gameApi';
+import { getMuseum } from './museums';
 import { identifyArtwork, getDeepArtworkAnalysis } from './services/geminiService';
 import { useNarration } from './hooks/useNarration';
 import { useWakeLock } from './hooks/useWakeLock';
 import { getUserId, setUserId, apiPost, apiGet, apiPatch, recoverSession } from './services/apiClient';
-import { IdentifyResponse, HistoryItem, Language, UserContext, Persona } from './types';
+import { IdentifyResponse, HistoryItem, Language, UserContext, Persona, ScanAwards } from './types';
 import { t } from './utils/i18n';
 
 const STORAGE_KEYS = {
@@ -36,7 +43,13 @@ const App: React.FC = () => {
     return parsed;
   });
 
-  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  // Game layer: tabs, points, awards
+  const [tab, setTab] = useState<Tab>('scan');
+  const [points, setPoints] = useState<number | null>(null);
+  const [openMissions, setOpenMissions] = useState<number | undefined>(undefined);
+  const [gameRefreshKey, setGameRefreshKey] = useState(0);
+  const [awards, setAwards] = useState<ScanAwards | null>(null);
+  const [isImmersive, setIsImmersive] = useState(false);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);
@@ -119,6 +132,20 @@ const App: React.FC = () => {
     }
   }, [userContext?.email, loadHistory]);
 
+  const applyMissionsState = useCallback((state: MissionsState) => {
+    setPoints(state.points);
+    setOpenMissions(state.missions.filter((m) => !m.completed).length);
+  }, []);
+
+  // Load points / open missions once the visitor is known
+  useEffect(() => {
+    if (userContext?.email && getUserId()) {
+      fetchMissions().then(applyMissionsState).catch(() => { /* panel shows its own error */ });
+    }
+  }, [userContext?.email, gameRefreshKey, applyMissionsState]);
+
+  const dismissAwards = useCallback(() => setAwards(null), []);
+
   // Back navigation handlers
   const handleBackToLanguage = () => {
     setLanguage(null);
@@ -129,7 +156,8 @@ const App: React.FC = () => {
     setUserContext(null);
     setResult(null);
     setCurrentImage(null);
-    setShowSettingsMenu(false);
+    setTab('scan');
+    setPoints(null);
     localStorage.removeItem(STORAGE_KEYS.userContext);
     localStorage.removeItem('artlens_userId');
   };
@@ -147,6 +175,16 @@ const App: React.FC = () => {
     if (userId) {
       apiPatch(`/api/users/${userId}`, { persona }).catch(err => {
         console.error('Failed to update persona on backend:', err);
+      });
+    }
+  };
+
+  const handleLanguageChange = (lang: Language) => {
+    setLanguage(lang);
+    const userId = getUserId();
+    if (userId) {
+      apiPatch(`/api/users/${userId}`, { language: lang }).catch(err => {
+        console.error('Failed to update language on backend:', err);
       });
     }
   };
@@ -184,10 +222,16 @@ const App: React.FC = () => {
     setHistory([]);
   };
 
-  const executeDeepAnalysis = async (rawBase64: string, initialResult: IdentifyResponse, lang: Language, scanId?: string) => {
+  const executeDeepAnalysis = async (
+    rawBase64: string,
+    initialResult: IdentifyResponse,
+    lang: Language,
+    scanIdPromise: Promise<string | undefined>,
+  ) => {
     setIsDeepAnalyzing(true);
     try {
         const deepData = await getDeepArtworkAnalysis(rawBase64, initialResult, lang);
+        const scanId = await scanIdPromise;
 
         const updatedResult = { ...initialResult, deepAnalysis: deepData };
         setResult(updatedResult);
@@ -212,6 +256,36 @@ const App: React.FC = () => {
     }
   };
 
+  /** Score a saved scan and show what was earned (never blocks the visitor). */
+  const requestAwards = (scanId: string) => {
+    awardScan(scanId)
+      .then((earned) => {
+        setPoints(earned.totalPoints);
+        if (earned.points > 0) setAwards(earned);
+        if (earned.missions.length) {
+          setOpenMissions((n) => (n === undefined ? n : Math.max(0, n - earned.missions.length)));
+        }
+      })
+      .catch((err) => console.error('Failed to award scan:', err));
+  };
+
+  const uploadScanImage = async (imageDataUrl: string, scanId: string) => {
+    try {
+      const blob = await fetch(imageDataUrl).then(r => r.blob());
+      const formData = new FormData();
+      formData.append('file', blob, 'scan.jpg');
+      formData.append('type', 'scan');
+      formData.append('scanId', scanId);
+      await fetch('/api/images/upload', {
+        method: 'POST',
+        headers: { 'X-User-Id': getUserId()! },
+        body: formData,
+      });
+    } catch (err) {
+      console.error('Scan image upload failed:', err);
+    }
+  };
+
   const processImageAnalysis = async (imageDataUrl: string) => {
     if (isAnalyzing || !language) return;
 
@@ -230,45 +304,27 @@ const App: React.FC = () => {
 
       setResult(response);
 
-      // Persist scan to backend and add to history
-      let scanId: string | undefined;
-      if (getUserId()) {
-        try {
-          const scanResult = await apiPost<{ scanId: string }>('/api/scans', {
-            artData: response,
-            language,
-          });
-          scanId = scanResult.scanId;
-          setCurrentScanId(scanId);
+      // Save the scan; deep analysis, narration, upload and scoring all run in parallel
+      const scanIdPromise: Promise<string | undefined> = getUserId()
+        ? apiPost<{ scanId: string }>('/api/scans', { artData: response, language, museumId: getMuseum().id })
+            .then((r) => r.scanId)
+            .catch((err) => { console.error('Failed to persist scan:', err); return undefined; })
+        : Promise.resolve(undefined);
 
-          // Upload captured image
-          try {
-            const blob = await fetch(imageDataUrl).then(r => r.blob());
-            const formData = new FormData();
-            formData.append('file', blob, 'scan.jpg');
-            formData.append('type', 'scan');
-            formData.append('scanId', scanId);
-            await fetch('/api/images/upload', {
-              method: 'POST',
-              headers: { 'X-User-Id': getUserId()! },
-              body: formData,
-            });
-          } catch (err) {
-            console.error('Scan image upload failed:', err);
-          }
-
-          // Add to history only after the upload so the thumbnail URL resolves
-          addToHistory(scanId, response);
-        } catch (err) {
-          console.error('Failed to persist scan:', err);
-        }
-      }
-
-      executeDeepAnalysis(rawBase64, response, language, scanId);
+      executeDeepAnalysis(rawBase64, response, language, scanIdPromise);
 
       // Generate TTS narration (parallel, non-blocking)
       if (userContext) {
         narration.generate(response, userContext.persona, language, userContext.name);
+      }
+
+      const scanId = await scanIdPromise;
+      if (scanId) {
+        setCurrentScanId(scanId);
+        requestAwards(scanId);
+        await uploadScanImage(imageDataUrl, scanId);
+        // Add to history only after the upload so the thumbnail URL resolves
+        addToHistory(scanId, response);
       }
 
     } catch (err: any) {
@@ -325,6 +381,7 @@ const App: React.FC = () => {
       setResult(item.data);
       setCurrentScanId(item.id);
       setIsHistoryOpen(false);
+      setTab('scan');
   };
 
   // 1. Language Selection
@@ -344,6 +401,8 @@ const App: React.FC = () => {
   }
 
   // 3. Main AR App
+  const showNav = !(tab === 'scan' && isImmersive) && !showGenerateModal;
+
   return (
     <div className="relative w-full h-dvh bg-[var(--bg)] overflow-hidden">
       {/* Hidden canvas for image capture */}
@@ -358,7 +417,7 @@ const App: React.FC = () => {
       <CameraFeed videoRef={videoRef} frozenImage={currentImage} language={language} />
 
       {/* Artwork Title Overlay — visible on frozen frame */}
-      {result && currentImage && (
+      {result && currentImage && !isImmersive && tab === 'scan' && (
         <div className="absolute top-0 left-0 right-0 z-5 pt-safe pointer-events-none">
           <div className="mt-20 px-6">
             <div className="warm-glass rounded-2xl px-4 py-3 inline-block max-w-[80%]">
@@ -386,10 +445,9 @@ const App: React.FC = () => {
         onUpload={handleUpload}
         hasResult={!!result}
         language={language}
-        onHistoryClick={() => setIsHistoryOpen(true)}
-        historyCount={history.length}
-        onSettingsClick={() => setShowSettingsMenu(!showSettingsMenu)}
-        onGalleryClick={() => setIsGalleryOpen(true)}
+        points={points}
+        onPointsClick={() => setTab('missions')}
+        bottomInset={showNav ? BOTTOM_NAV_HEIGHT : 0}
       >
         {/* Error Notification */}
         {error && (
@@ -432,52 +490,55 @@ const App: React.FC = () => {
                 narrationIsGenerating={narration.isGenerating}
                 narrationScript={narration.script}
                 onStopNarration={narration.stop}
+                onImmersiveChange={setIsImmersive}
+                onPointsChange={setPoints}
               />
         )}
       </HUDOverlay>
 
-      {/* Settings Menu */}
-      {showSettingsMenu && userContext && language && (
-        <div className="absolute inset-0 z-[60]" onClick={() => setShowSettingsMenu(false)}>
-          <div className="absolute inset-0 bg-black/40" />
-          <div
-            className="absolute top-20 right-4 w-64 bg-[var(--surface)] border border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden animate-fade-in"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-4 py-3 border-b border-white/[0.06]">
-              <p className="text-xs text-secondary/60 font-mono">{t('settings.loggedAs', language)}</p>
-              <p className="text-sm text-[var(--text)] font-medium truncate mt-0.5">{userContext.name}</p>
-              <p className="text-xs text-secondary/50 truncate">{userContext.email}</p>
-            </div>
-            <div className="px-4 py-3 border-b border-white/[0.06]">
-              <p className="text-xs text-secondary/60 font-mono mb-2">{t('settings.persona', language)}</p>
-              <div className="flex gap-2">
-                {(['guide', 'academic', 'blogger'] as const).map(p => (
-                  <button
-                    key={p}
-                    onClick={() => handlePersonaChange(p)}
-                    className={`flex-1 py-1.5 rounded-full text-xs font-medium transition-all duration-300
-                      ${userContext.persona === p
-                        ? 'bg-primary/15 text-primary border border-primary/30'
-                        : 'bg-[var(--surface-variant)] text-secondary border border-white/[0.06] hover:border-primary/20'
-                      }`}
-                  >
-                    {t(`result.${p === 'academic' ? 'curator' : p}`, language)}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="w-full px-4 py-3 text-left text-sm text-error/80 hover:bg-error/10 transition-colors flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              {t('settings.logout', language)}
-            </button>
-          </div>
-        </div>
+      {/* Game panels (camera keeps running underneath) */}
+      {tab === 'missions' && (
+        <MissionsPanel
+          language={language}
+          refreshKey={gameRefreshKey}
+          onLoaded={applyMissionsState}
+          onGoScan={() => setTab('scan')}
+        />
+      )}
+      {tab === 'ranking' && <RankingPanel language={language} refreshKey={gameRefreshKey} />}
+      {tab === 'me' && (
+        <ProfilePanel
+          language={language}
+          userContext={userContext}
+          points={points}
+          historyCount={history.length}
+          onLanguageChange={handleLanguageChange}
+          onPersonaChange={handlePersonaChange}
+          onOpenHistory={() => setIsHistoryOpen(true)}
+          onOpenGallery={() => setIsGalleryOpen(true)}
+          onLogout={handleLogout}
+        />
+      )}
+
+      {showNav && (
+        <BottomNav
+          active={tab}
+          language={language}
+          openMissions={openMissions}
+          onChange={(next) => {
+            setTab(next);
+            if (next !== 'scan') setGameRefreshKey((k) => k + 1);
+          }}
+        />
+      )}
+
+      {awards && (
+        <AwardToast
+          awards={awards}
+          language={language}
+          onDismiss={dismissAwards}
+          onViewMissions={() => { setAwards(null); setTab('missions'); }}
+        />
       )}
 
       {/* Gallery */}

@@ -1,4 +1,4 @@
-import { IdentifyResponse, GroundingSource, ArtData, DeepArtData, Language, Annotation } from '../types';
+import { IdentifyResponse, GroundingSource, ArtData, DeepArtData, Language, Annotation, AiTrace } from '../types';
 import { apiPost } from './apiClient';
 import { getMuseum } from '../museums';
 
@@ -57,6 +57,28 @@ const extractSources = (response: any): GroundingSource[] => {
   return sources;
 };
 
+/** Collect what the "How the AI thought" panel shows from the search-grounded call. */
+export const buildAiTrace = (
+  response: any,
+  parsed: any,
+  latencyMs: number,
+  museumName: string | null,
+): AiTrace => {
+  const meta = response?._meta || {};
+  const grounding = response?.candidates?.[0]?.groundingMetadata || {};
+  const confidence = typeof parsed?.confidence === 'string' ? parsed.confidence.toLowerCase() : null;
+  return {
+    model: meta.model || response?.modelVersion || 'unknown',
+    fallbackUsed: !!meta.fallbackUsed,
+    latencyMs,
+    thinkingLevel: meta.thinkingLevel || null,
+    confidence: confidence === 'high' || confidence === 'medium' || confidence === 'low' ? confidence : null,
+    evidence: typeof parsed?.evidence === 'string' ? parsed.evidence : '',
+    searchQueries: Array.isArray(grounding.webSearchQueries) ? grounding.webSearchQueries.slice(0, 8) : [],
+    museumContext: museumName && museumName !== 'Museum' ? museumName : null,
+  };
+};
+
 const getLanguageName = (lang: Language): string => {
   switch(lang) {
     case 'pt': return 'Portuguese';
@@ -67,7 +89,8 @@ const getLanguageName = (lang: Language): string => {
 
 export const identifyArtwork = async (base64Image: string, language: Language): Promise<IdentifyResponse> => {
   const langName = getLanguageName(language);
-  const museumHint = getMuseum().identifyHint;
+  const museum = getMuseum();
+  const museumHint = museum.identifyHint;
   try {
     const imagePart = {
       inlineData: {
@@ -78,7 +101,7 @@ export const identifyArtwork = async (base64Image: string, language: Language): 
 
     const searchPrompt = `
       Identify the piece of art in this image.
-      Return a JSON object with these exact keys: "title", "artist", "year", "country", "funFact".
+      Return a JSON object with these exact keys: "title", "artist", "year", "country", "funFact", "confidence", "evidence".
 
       Example:
       {
@@ -86,11 +109,15 @@ export const identifyArtwork = async (base64Image: string, language: Language): 
         "artist": "Vincent van Gogh",
         "year": "1889",
         "country": "Netherlands",
-        "funFact": "Painted from his asylum window."
+        "funFact": "Painted from his asylum window.",
+        "confidence": "high",
+        "evidence": "The swirling night sky, cypress and village match the 1889 painting; museum sources confirm it."
       }
 
       "country": The artist's nationality.
       "funFact": An interesting trivia point.
+      "confidence": "high", "medium" or "low": how sure you are that this is the right artwork.
+      "evidence": One short sentence on the visual clues and sources that led to your answer.
 
       ${museumHint ? `CONTEXT: ${museumHint}\n\n` : ''}IMPORTANT:
       - Use Google Search to verify details.
@@ -124,6 +151,7 @@ export const identifyArtwork = async (base64Image: string, language: Language): 
     `;
 
     // Execute Parallel Calls via proxy
+    const startedAt = performance.now();
     const [searchResponse, visualResponse] = await Promise.all([
       // 1. Search-grounded identification (tool enabled, text output)
       apiPost('/api/generate', {
@@ -170,7 +198,8 @@ export const identifyArtwork = async (base64Image: string, language: Language): 
       description: visualData?.description || "Analysis available.",
 
       sources: uniqueSources,
-      annotations: annotations
+      annotations: annotations,
+      aiTrace: buildAiTrace(searchResponse, searchData, Math.round(performance.now() - startedAt), museum.shortName),
     };
 
   } catch (error) {
