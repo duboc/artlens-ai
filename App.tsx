@@ -19,6 +19,7 @@ import { fetchMissions, awardScan, MissionsState } from './services/gameApi';
 import { getMuseum } from './museums';
 import { identifyArtwork, getDeepArtworkAnalysis } from './services/geminiService';
 import { unlockAudio, NarrationRecording } from './hooks/useNarration';
+import type { PreviousStop } from './utils/narrationPrompt';
 import { useNarrationActions } from './hooks/NarrationProvider';
 import { encodeWav } from './utils/narrationTimeline';
 import { createArtworkShareCard, shareOrDownload } from './utils/shareCard';
@@ -55,6 +56,9 @@ const App: React.FC = () => {
   const [gameRefreshKey, setGameRefreshKey] = useState(0);
   const [awards, setAwards] = useState<ScanAwards | null>(null);
   const [isImmersive, setIsImmersive] = useState(false);
+  const wasImmersiveRef = useRef(false);
+  /** Last artwork narrated in this session (history may lag a few seconds behind a new scan). */
+  const lastStopRef = useRef<PreviousStop | null>(null);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);
@@ -129,7 +133,7 @@ const App: React.FC = () => {
     if (!userId) return;
     try {
       const data = await apiGet<{ scans: HistoryItem[] }>(`/api/users/${userId}/scans`);
-      setHistory(data.scans || []);
+      startTransition(() => setHistory(data.scans || []));
     } catch (err) {
       console.error('Failed to load history:', err);
     }
@@ -153,6 +157,8 @@ const App: React.FC = () => {
     }
   }, [userContext?.email, gameRefreshKey, applyMissionsState]);
 
+  /** Scan that earned the current notice: it only shows inside that scan's sheet. */
+  const [awardsScanId, setAwardsScanId] = useState<string | null>(null);
   const dismissAwards = useCallback(() => setAwards(null), []);
 
   // Back navigation handlers
@@ -224,7 +230,7 @@ const App: React.FC = () => {
       imageUrl: userId ? `/api/images/users/${userId}/scans/${scanId}.jpg` : '',
       data: data
     };
-    startTransition(() => setHistory(prev => [newItem, ...prev]));
+    startTransition(() => setHistory(prev => [newItem, ...prev.filter((h) => h.id !== scanId)]));
   };
 
   const clearHistory = () => {
@@ -273,7 +279,10 @@ const App: React.FC = () => {
     awardScan(scanId)
       .then((earned) => startTransition(() => {
         setPoints(earned.totalPoints);
-        if (earned.points > 0) setAwards(earned);
+        if (earned.points > 0) {
+          setAwards(earned);
+          setAwardsScanId(scanId);
+        }
         if (earned.missions.length) {
           setOpenMissions((n) => (n === undefined ? n : Math.max(0, n - earned.missions.length)));
         }
@@ -342,11 +351,21 @@ const App: React.FC = () => {
     }
   };
 
+  /** The visitor's previous stop, so the guide greets only at the first artwork of a visit. */
+  const previousStop = (): PreviousStop | null => {
+    const fromHistory = history[0] ? { title: history[0].data.title, artist: history[0].data.artist, at: history[0].timestamp } : null;
+    const fromSession = lastStopRef.current;
+    if (!fromHistory) return fromSession;
+    if (!fromSession) return fromHistory;
+    return fromSession.at >= fromHistory.at ? fromSession : fromHistory;
+  };
+
   const processImageAnalysis = async (imageDataUrl: string) => {
     if (isAnalyzing || !language) return;
 
-    // Kill any existing narration immediately — don't wait for generate() later
-    narration.stop();
+    // Silence any narration at once; if it is still streaming, generate() hands it to a background
+    // collector so the previous scan still gets its narration saved
+    narration.detach();
 
     setError(null);
     setIsAnalyzing(true);
@@ -372,8 +391,10 @@ const App: React.FC = () => {
 
       // Narration with live captions (parallel, non-blocking); saved with the scan when done
       if (userContext) {
+        const previous = previousStop();
+        lastStopRef.current = { title: response.title, artist: response.artist, at: Date.now() };
         Promise.all([
-          narration.generate(response, userContext.persona, language, userContext.name),
+          narration.generate(response, userContext.persona, language, userContext.name, previous),
           scanIdPromise,
         ]).then(([recording, id]) => {
           if (recording && id) saveNarration(recording, id);
@@ -415,34 +436,29 @@ const App: React.FC = () => {
     }
   };
 
-  const handleUpload = async (file: File) => {
-    unlockAudio();
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-        const fullDataUrl = e.target?.result as string;
-        if (fullDataUrl) {
-            await processImageAnalysis(fullDataUrl);
-        } else {
-            setError("Failed to process image file.");
-        }
-    };
-    reader.onerror = () => setError("Error reading file.");
-    reader.readAsDataURL(file);
-  };
+  /** Chat / quiz opened or closed inside the sheet; on close, refresh what was done with each scan. */
+  const handleImmersiveChange = useCallback((immersive: boolean) => {
+    setIsImmersive(immersive);
+    if (wasImmersiveRef.current && !immersive) loadHistory();
+    wasImmersiveRef.current = immersive;
+  }, [loadHistory]);
 
   const handleReset = () => {
+    setAwards(null); // the notice belongs to the scan that earned it
     setResult(null);
     setError(null);
     setCurrentImage(null);
     setCurrentScanId(null);
     setForceChatOpen(false);
     setIsDeepAnalyzing(false);
-    narration.stop();
+    // Go silent, but let the narration finish streaming so it is saved with the scan
+    narration.detach();
   };
 
   const handleSelectHistory = (item: HistoryItem) => {
       setCurrentImage(item.imageUrl);
       setSheetKey(item.id);
+      setAwards(null);
       setActivePage(0);
       setResult(item.data);
       setCurrentScanId(item.id);
@@ -480,10 +496,13 @@ const App: React.FC = () => {
 
   // Sheet pages: the open scan first, then earlier scans to swipe through
   const sheetPages: SheetPage[] = result ? [
-    { key: sheetKey, data: result, imageUrl: currentImage, scanId: currentScanId },
+    {
+      key: sheetKey, data: result, imageUrl: currentImage, scanId: currentScanId,
+      activity: history.find((h) => h.id === (currentScanId ?? sheetKey))?.activity,
+    },
     ...history
       .filter((h) => h.id !== currentScanId && h.id !== sheetKey)
-      .map((h) => ({ key: h.id, data: h.data, imageUrl: h.imageUrl, scanId: h.id })),
+      .map((h) => ({ key: h.id, data: h.data, imageUrl: h.imageUrl, scanId: h.id, activity: h.activity })),
   ] : [];
 
   return (
@@ -519,7 +538,8 @@ const App: React.FC = () => {
       <HUDOverlay
         isScanning={isAnalyzing}
         onScan={handleScan}
-        onUpload={handleUpload}
+        lastCapture={history.length ? { recent: history.slice(0, 3).map((h) => h.imageUrl), count: history.length } : null}
+        onOpenCaptures={() => history[0] && handleSelectHistory(history[0])}
         hasResult={!!result}
         language={language}
         points={points}
@@ -557,7 +577,7 @@ const App: React.FC = () => {
           hasSelfie={!!userContext.selfieUrl}
           animateIn
           onActiveChange={setActivePage}
-          toast={awards ? (
+          toast={awards && awardsScanId === currentScanId && sheetKey === 'current' ? (
             <AwardToast
               inline
               awards={awards}
@@ -567,7 +587,7 @@ const App: React.FC = () => {
             />
           ) : null}
           onClosed={handleReset}
-          onImmersiveChange={setIsImmersive}
+          onImmersiveChange={handleImmersiveChange}
           onPointsChange={setPoints}
           onPersonaChange={handlePersonaChange}
           onGenerateMe={() => setShowGenerateModal(true)}

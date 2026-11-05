@@ -17,7 +17,7 @@ function engine(over: Partial<UseNarrationReturn> = {}): UseNarrationReturn {
     status: 'streaming', sourceKey: 'current', isGenerating: false, isPlaying: true, isPaused: false,
     script: sentences.map((s) => s.text).join(' '), sentences, activeSentence: 1, getPosition: () => 1.5, duration: 6,
     mode: 'listen', setMode: vi.fn(), generate: vi.fn(), pause: vi.fn(), resume: vi.fn(), replay: vi.fn(),
-    playSaved: vi.fn(), stop: vi.fn(), backgrounded: vi.fn(), ...over,
+    playSaved: vi.fn(), stop: vi.fn(), detach: vi.fn(), backgrounded: vi.fn(), ...over,
   };
 }
 

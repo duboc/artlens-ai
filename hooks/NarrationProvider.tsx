@@ -7,7 +7,7 @@ import { useNarration, UseNarrationReturn } from './useNarration';
  * the state (the narration panel), never the whole app or the result sheet being dragged.
  */
 type NarrationActions = Pick<UseNarrationReturn,
-  'generate' | 'stop' | 'pause' | 'resume' | 'replay' | 'playSaved' | 'setMode' | 'backgrounded'> & {
+  'generate' | 'stop' | 'detach' | 'pause' | 'resume' | 'replay' | 'playSaved' | 'setMode' | 'backgrounded'> & {
   /** Current playing state, read on demand (does not subscribe). */
   isPlaying: () => boolean;
 };
@@ -22,6 +22,7 @@ export const NarrationProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const actions = useMemo<NarrationActions>(() => ({
     generate: (...a) => ref.current.generate(...a),
     stop: () => ref.current.stop(),
+    detach: () => ref.current.detach(),
     pause: () => ref.current.pause(),
     resume: () => ref.current.resume(),
     replay: (...a) => ref.current.replay(...a),
@@ -39,7 +40,7 @@ export const NarrationProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
 const noop = () => {};
 const NOOP_ACTIONS: NarrationActions = {
-  generate: async () => null, stop: noop, pause: noop, resume: noop, replay: noop, playSaved: noop,
+  generate: async () => null, stop: noop, detach: noop, pause: noop, resume: noop, replay: noop, playSaved: noop,
   setMode: noop, backgrounded: noop, isPlaying: () => false,
 };
 

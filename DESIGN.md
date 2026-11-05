@@ -98,6 +98,20 @@ Scale actually in use (12px floor — nothing smaller is allowed in new code):
   above safe area, 24px line icons + 12px label, active = `text-primary` + `aria-current="page"`.
   Open-missions count = mono badge on `primary-dark`. Hidden while chat/quiz is immersive.
 - **Points pill** (HUD top-right): glass, `h-11`, mono number + 12px unit, opens Missions.
+- **Recent captures** (HUD, right of the shutter): up to 3 small 44px photos overlapping (14px steps,
+  fanned −12°/−6°/0°, the newest on top) with a 2px `--bg` ring, plus a mono count chip on `primary-dark`.
+  It reopens earlier scans. Camera only: there is no upload button.
+- **Sheet buttons** (`PillButton` in `ScanPage`): one shape for every action. 52px pill, icon + label
+  (+ optional mono meta after "·"), content centered. Variants: primary (filled `primary-dark`, the chat),
+  secondary (outline `primary/40`, the quiz), tonal (`surface-variant`, Generate me / Share / Scan another).
+- **Content cards** (`Card` in `ScanPage`): the description stays one paragraph of plain text (≤320 chars,
+  `utils/text.ts` `oneParagraph`). Below it: a "Did you know?" card (`primary/12` tint); numbered
+  curiosities (mono `01–03` in blue) in a 2-column grid; then Historical context / Technique / Symbolism
+  cards (line icon + title + one paragraph ≤260 chars). Cards are `rounded-2xl`, `surface-variant`, `p-4`.
+  While the analysis loads, pulse skeletons take the cards' place. Deep-analysis prompts ask for ≤2
+  sentences per block and 3 one-sentence curiosities.
+- **Activity on an earlier scan**: the chat CTA becomes "Continue the chat · N messages" (count in mono),
+  and the quiz row becomes "Resume / Review the quiz" with "N right · a/t" in mono on the right.
 - **StatusPip** (`icons.tsx`): 24px; done = filled blue disc + check, open = 1.5px ring `secondary/60`.
   `role="img"` + label. Icons: 24px grid, 1.5px stroke, round caps.
 - **Ledger row / Fact row / Nav row**: see §4; trailing value always mono, right-aligned.
@@ -142,6 +156,9 @@ Scale actually in use (12px floor — nothing smaller is allowed in new code):
   layout, no React render per frame. On release the detent is written to `data-detent` directly (no React
   render), and CSS follows it with `cubic-bezier(.32,.72,0,1)`: the hero photo slides in by `transform`
   (320ms, compositor only) and the header picks up the safe-area padding (280ms).
+- **Photo rises with the sheet**: between medium and full, the photo above the sheet moves up with
+  the sheet's top edge (`translate3d`, written in the same frame as the sheet), so it is pushed away
+  rather than covered.
 - **Photo morph**: on scan, the full-screen frozen frame morphs into the photo stage via the View
   Transitions API (`scan-photo`, 420ms, same curve) while the sheet rises on its spring. Root crossfade is off.
 - **Instant**: tab panels mount with no transition. Quiz question swaps and disclosure content use

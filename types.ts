@@ -65,11 +65,18 @@ export interface ScanAwards {
   totalPoints: number;
 }
 
+/** What the visitor already did with a scanned artwork. */
+export interface ScanActivity {
+  chatMessages: number;
+  quiz?: { answered: number; correct: number; total: number };
+}
+
 export interface HistoryItem {
   id: string;
   timestamp: number;
   imageUrl: string;
   data: IdentifyResponse;
+  activity?: ScanActivity;
 }
 
 export type Language = 'en' | 'pt' | 'es';

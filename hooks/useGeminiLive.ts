@@ -232,6 +232,7 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
           - Speak naturally and conversationally — you are a companion, not a textbook.
           - Speak as if walking alongside the visitor: "if you look closely," "notice how the artist..."
           - Open with something that hooks attention: a surprising fact, a question, or a vivid detail.
+          - Do not open with a greeting or "hello": the visitor was already welcomed at the start of the visit.
           - When the visitor asks about something you don't know, say so honestly and suggest what they could explore instead.
           - Speak ONLY in ${langInstruction}.
       `;
@@ -283,7 +284,7 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
 
           // setupComplete → mark as connected, start audio pipeline, resolve promise
           if (msg.setupComplete !== undefined) {
-            console.log('[audio] Live Session Connected, outputCtx:', localOutputCtx.state);
+            console.log('[audio] Live Session Connected, outputCtx:', localOutputCtx?.state);
             setIsConnected(true);
 
             if (localInputCtx) {

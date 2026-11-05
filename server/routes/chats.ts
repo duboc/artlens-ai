@@ -24,16 +24,17 @@ router.post('/:scanId/chats', async (req: Request<{ scanId: string }>, res: Resp
     const messageId = uuidv4();
     const db = getFirestore();
 
-    await db
-      .collection('users').doc(userId)
-      .collection('scans').doc(scanId)
-      .collection('chats').doc(messageId)
-      .set({
-        role,
-        text: text.trim(),
-        isAudioTranscription: isAudioTranscription || false,
-        createdAt: FieldValue.serverTimestamp(),
-      });
+    const scanRef = db.collection('users').doc(userId).collection('scans').doc(scanId);
+    const batch = db.batch();
+    batch.set(scanRef.collection('chats').doc(messageId), {
+      role,
+      text: text.trim(),
+      isAudioTranscription: isAudioTranscription || false,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+    // Kept on the scan so the history list can show "N messages" without reading every chat
+    batch.set(scanRef, { chatCount: FieldValue.increment(1) }, { merge: true });
+    await batch.commit();
 
     res.status(201).json({ messageId });
   } catch (err) {

@@ -68,8 +68,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         try {
           await connect(artData, language, userContext, explanationLength, narrationScript);
           // Trigger auto-narration — the guide starts talking like an audio guide
+          // The visitor was already welcomed by the narration: continue, never greet again
           sendTextInput(
-            `Greet ${userContext.name} warmly and begin narrating about "${artData.title}" by ${artData.artist}. ` +
+            `Continue the tour about "${artData.title}" by ${artData.artist}. Do not greet ${userContext.name} or say hello again: they were already welcomed. ` +
             `Start with something that hooks their attention — a surprising detail, a vivid observation, or a question. ` +
             `Then naturally flow into what makes this piece special. Keep it conversational, as if you're standing right next to them.`
           );

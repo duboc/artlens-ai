@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { IdentifyResponse, Language, Persona } from '../types';
 import { base64ToUint8Array } from '../utils/audioUtils';
 import { getMuseum, guideIntro } from '../museums';
+import { narrationPrompts, PreviousStop } from '../utils/narrationPrompt';
 import {
   NarrationSentence,
   PauseDetector,
@@ -64,12 +65,18 @@ export interface UseNarrationReturn {
   duration: number;
   mode: NarrationMode;
   setMode: (mode: NarrationMode) => void;
-  generate: (artData: IdentifyResponse, persona: Persona, language: Language, userName: string) => Promise<NarrationRecording | null>;
+  /** `previous`: the visitor's last stop; when recent, the guide continues the tour instead of greeting again. */
+  generate: (artData: IdentifyResponse, persona: Persona, language: Language, userName: string, previous?: PreviousStop | null) => Promise<NarrationRecording | null>;
   pause: () => void;
   resume: () => void;
   replay: (fromSec?: number) => void;
   playSaved: (key: string, saved: SavedNarration, meta: NarrationMeta) => void;
   stop: () => void;
+  /**
+   * The visitor closed the result: go silent at once but let the Live stream finish in the
+   * background so the narration (audio + text) is still saved with the scan.
+   */
+  detach: () => void;
   /**
    * The page went to the background (screen locked, app switched). Saved audio keeps playing
    * with lock-screen controls; the live stream (Web Audio, no lock-screen controls) pauses so
@@ -155,6 +162,8 @@ export const useNarration = (): UseNarrationReturn => {
 
   const wsRef = useRef<WebSocket | null>(null);
   const gainRef = useRef<GainNode | null>(null);
+  /** Closed by the visitor while streaming: keep receiving silently, never play. */
+  const detachedRef = useRef(false);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const nextStartRef = useRef(0);
   const startAtRef = useRef<number | null>(null);
@@ -343,7 +352,7 @@ export const useNarration = (): UseNarrationReturn => {
     modeRef.current = next;
     setModeState(next);
     try { localStorage.setItem(MODE_KEY, next); } catch {}
-    if (gainRef.current) gainRef.current.gain.value = next === 'read' ? 0 : 1;
+    if (gainRef.current && !detachedRef.current) gainRef.current.gain.value = next === 'read' ? 0 : 1;
     if (next === 'read') {
       if (engineRef.current === 'element') audioElRef.current?.pause();
       setActiveSentence(-1);
@@ -358,9 +367,64 @@ export const useNarration = (): UseNarrationReturn => {
     stop,
   };
 
+  /**
+   * A new scan is starting while the previous narration (already closed by the visitor) is still
+   * streaming: hand its connection to a silent background collector that finishes receiving,
+   * aligns the captions and resolves the original promise, so that scan still gets its narration.
+   */
+  const handOffDetached = useCallback(() => {
+    const ws = wsRef.current;
+    const resolve = resolveRef.current;
+    const det = detectorRef.current;
+    if (!detachedRef.current || !ws || !resolve || !det) return;
+    const chunks = chunksRef.current;
+    let transcript = transcriptRef.current;
+    // Detach from the engine so stop() neither closes this socket nor resolves the promise
+    wsRef.current = null;
+    resolveRef.current = null;
+    detectorRef.current = null;
+    let done = false;
+    const end = (rec: NarrationRecording | null) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { ws.close(); } catch {}
+      resolve(rec);
+    };
+    const timer = setTimeout(() => end(null), 60_000);
+    ws.onmessage = async (event) => {
+      let msg: any;
+      try {
+        msg = JSON.parse(typeof event.data === 'string' ? event.data : await event.data.text());
+      } catch {
+        return;
+      }
+      const sc = msg.serverContent;
+      if (!sc) return;
+      if (sc.outputTranscription?.text) transcript += sc.outputTranscription.text;
+      for (const part of sc.modelTurn?.parts || []) {
+        const data = part.inlineData?.data;
+        if (!data) continue;
+        const bytes = base64ToUint8Array(data);
+        const pcm = new Int16Array(new Int16Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 2)));
+        chunks.push(pcm);
+        det.push(pcm);
+      }
+      if (sc.turnComplete) {
+        const pcm = concat(chunks);
+        const sentences = alignSentences(splitSentences(transcript), det.onsets, calibratedRate(transcript.length, det.onsets, det.duration));
+        end({ pcm, script: transcript, sentences, durationSec: pcm.length / SAMPLE_RATE });
+      }
+    };
+    ws.onerror = () => end(null);
+    ws.onclose = () => end(null);
+  }, []);
+
   // ─── Saved narrations (history) ───────────────────────────────────────────
 
   const playSaved = useCallback((key: string, saved: SavedNarration, meta: NarrationMeta) => {
+    // A closed narration may still be finishing in the background: keep it so it gets saved
+    handOffDetached();
     stop();
     if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
     chunksRef.current = [];
@@ -373,7 +437,7 @@ export const useNarration = (): UseNarrationReturn => {
     setStatus('finished');
     if (modeRef.current === 'read') setMode('listen');
     playElement(saved.audioUrl, 0);
-  }, [playElement, setMode, stop]);
+  }, [handOffDetached, playElement, setMode, stop]);
 
   // ─── Live generation ──────────────────────────────────────────────────────
 
@@ -390,12 +454,15 @@ export const useNarration = (): UseNarrationReturn => {
     if (!same) setSentences(aligned);
   }, []);
 
+
   const generate = useCallback(async (
     artData: IdentifyResponse,
     persona: Persona,
     language: Language,
     userName: string,
+    previous: PreviousStop | null = null,
   ): Promise<NarrationRecording | null> => {
+    handOffDetached();
     stop();
     const session = ++sessionRef.current;
     if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
@@ -419,21 +486,16 @@ export const useNarration = (): UseNarrationReturn => {
     const personaDesc = PERSONA_DESCRIPTIONS[persona] || PERSONA_DESCRIPTIONS.guide;
     const langName = LANGUAGE_NAMES[language] || 'English';
     const museum = getMuseum();
-    const systemInstruction = `${guideIntro(museum)}${museum.guideContext ? `\n\n${museum.guideContext}` : ''}
-
-Personality: ${personaDesc}
-
-You will narrate a short introduction (2-3 sentences, about 15-20 seconds) for a visitor who just scanned an artwork. You must:
-1. Greet the visitor by their first name
-2. Identify the artwork naturally (title, artist)
-3. Share one compelling detail — a story, hidden meaning, technique, or surprising fact
-4. End with a brief invitation to continue the conversation
-
-Rules:
-- Speak entirely in ${langName}
-- Be natural and conversational
-- Match the personality exactly
-- Keep it tight — this is a 15-20 second intro, not a lecture`;
+    // Greet only at the first stop of a visit; afterwards continue the tour
+    const prompts = narrationPrompts({
+      museumIntro: `${guideIntro(museum)}${museum.guideContext ? `\n\n${museum.guideContext}` : ''}`,
+      personality: personaDesc,
+      languageName: langName,
+      visitorName: userName,
+      artwork: artData,
+      previous,
+    });
+    const systemInstruction = prompts.system;
 
     let ctx: AudioContext;
     try {
@@ -445,6 +507,7 @@ Rules:
       return null;
     }
     const gain = ctx.createGain();
+    detachedRef.current = false;
     gain.gain.value = modeRef.current === 'read' ? 0 : 1;
     gain.connect(ctx.destination);
     gainRef.current = gain;
@@ -463,6 +526,16 @@ Rules:
       const finish = (rec: NarrationRecording | null) => {
         if (resolveRef.current === resolve) resolveRef.current = null;
         resolve(rec);
+      };
+
+      /** Sends the narration request once the session is set up. */
+      const sendPrompt = () => {
+        ws.send(JSON.stringify({
+          client_content: {
+            turns: [{ role: 'user', parts: [{ text: prompts.user }] }],
+            turn_complete: true,
+          },
+        }));
       };
 
       ws.onopen = () => {
@@ -490,27 +563,7 @@ Rules:
 
         if (msg.setupComplete !== undefined) {
           setStatus('streaming');
-          ws.send(JSON.stringify({
-            client_content: {
-              turns: [{
-                role: 'user',
-                parts: [{
-                  text: `Visitor name: ${userName}
-
-Artwork:
-- Title: ${artData.title}
-- Artist: ${artData.artist}
-- Year: ${artData.year || 'Unknown'}
-- Style: ${artData.style || ''}
-- Description: ${artData.description || ''}
-- Fun fact: ${artData.funFact || ''}
-
-Begin your narration now.`,
-                }],
-              }],
-              turn_complete: true,
-            },
-          }));
+          sendPrompt();
           return;
         }
 
@@ -560,7 +613,7 @@ Begin your narration now.`,
               updateMediaSession('none');
             }
           };
-          if (modeRef.current === 'listen' && ctx.state === 'running') {
+          if (modeRef.current === 'listen' && ctx.state === 'running' && !detachedRef.current) {
             setIsPlaying(true);
             startClock();
             updateMediaSession('playing');
@@ -597,7 +650,23 @@ Begin your narration now.`,
         finish(null);
       };
     });
-  }, [realign, startClock, stop, stopClock, updateMediaSession]);
+  }, [handOffDetached, realign, startClock, stop, stopClock, updateMediaSession]);
+
+  const detach = useCallback(() => {
+    if (engineRef.current === 'live' && wsRef.current) {
+      detachedRef.current = true;
+      if (gainRef.current) gainRef.current.gain.value = 0;
+      if (sharedCtx?.state === 'suspended') sharedCtx.resume().catch(() => {});
+      stopClock();
+      setIsPlaying(false);
+      setIsPaused(false);
+      setActiveSentence(-1);
+      setSourceKey(null);
+      updateMediaSession('none');
+      return;
+    }
+    stop();
+  }, [stop, stopClock, updateMediaSession]);
 
   const backgrounded = useCallback(() => {
     if (engineRef.current === 'live' && sharedCtx?.state === 'running') pause();
@@ -622,6 +691,7 @@ Begin your narration now.`,
     replay,
     playSaved,
     stop,
+    detach,
     backgrounded,
   };
 };
