@@ -189,7 +189,7 @@ export const useNarration = (): UseNarrationReturn => {
       const dbg = (window as any).__artlensNarration;
       if (dbg && idx !== dbg.lastIdx) {
         dbg.lastIdx = idx;
-        dbg.highlights.push({ idx, position: pos, start: sentencesRef.current[idx]?.start ?? null });
+        dbg.highlights.push({ idx, position: pos, start: sentencesRef.current[idx]?.start ?? null, at: Math.round(performance.now()) });
       }
     }
     rafRef.current = requestAnimationFrame(tick);

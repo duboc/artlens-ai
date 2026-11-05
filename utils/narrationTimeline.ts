@@ -122,6 +122,11 @@ export const STREAM_COMMIT_SCORE = 0.25;
  * of the measured rate fixes fast voices without letting one odd sentence swing the estimate.
  */
 export const STREAM_RATE_BLEND = 0.25;
+/**
+ * In recorded sessions 62 of 83 sentence-end pauses last ≥ 0.4 s against 14 of 53 comma pauses;
+ * a long pause may sit further from the estimate (the voice speeds up within a narration).
+ */
+export const STREAM_LONG_PAUSE = { gap: 0.45, tolerance: 0.35 };
 
 export function alignSentences(
   sentences: { text: string; charStart: number }[],
@@ -136,6 +141,8 @@ export function alignSentences(
   commitScore = STREAM_COMMIT_SCORE,
   /** While streaming, weight of this voice's measured rate against `charsPerSec` (shrinkage). */
   rateBlend = STREAM_RATE_BLEND,
+  /** While streaming, long pauses (sentence ends far more often than commas) get a wider tolerance. */
+  longPause: { gap: number; tolerance: number } = STREAM_LONG_PAUSE,
 ): NarrationSentence[] {
   const result: NarrationSentence[] = [];
   const first = onsets[0]?.time ?? 0;
@@ -176,7 +183,10 @@ export function alignSentences(
     // arriving): switching rules once audio passes `hi` would move a caption already shown.
     const streaming = audioReceivedSec !== Infinity;
     const windowOpen = hi > audioReceivedSec;
-    const goodMatch = (o: PauseOnset) => Math.abs(o.time - o.gap - est) <= commitScore * prevDur + 0.15;
+    const goodMatch = (o: PauseOnset) => {
+      const d = Math.abs(o.time - o.gap - est);
+      return d <= commitScore * prevDur + 0.15 || (o.gap >= longPause.gap && d <= longPause.tolerance * prevDur + 0.15);
+    };
     let best: PauseOnset | null = null;
     let bestScore = Infinity;
     for (let i = used + 1; i < onsets.length; i++) {

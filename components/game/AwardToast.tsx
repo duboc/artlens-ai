@@ -49,10 +49,10 @@ export const AwardToast: React.FC<AwardToastProps> = ({ awards, inline = false, 
           <button
             type="button"
             onClick={onViewMissions}
-            aria-label={`+${awards.points}: ${summary}. ${t('awards.viewMissions', language)}`}
             className="min-h-[44px] max-w-full flex items-center gap-2 text-left"
           >
             {body}
+            <span className="sr-only">{t('awards.viewMissions', language)}</span>
           </button>
         ) : (
           <p className="min-h-[44px] flex items-center gap-2">{body}</p>

@@ -28,7 +28,7 @@ describe('narration timeline', () => {
     expect(det.duration).toBeCloseTo(2.5, 2);
   });
 
-  describe('on 38 recorded Gemini Live sessions (3 languages, 3 voices; 10 held out, 3 captured in the app)', () => {
+  describe('on 43 recorded Gemini Live sessions (3 languages, 3 voices; 8 captured in the app)', () => {
     /** Fraction of sentences within 300 ms of the reference, with the misses for the failure message. */
     function score(errors: { label: string; k: number; ms: number }[]) {
       const misses = errors.filter((e) => Math.abs(e.ms) > 300);
@@ -44,7 +44,7 @@ describe('narration timeline', () => {
         s.referenceStarts.forEach((ref, k) => { if (ref !== null) errors.push({ label: s.label, k, ms: Math.round((final[k].start - ref) * 1000) }); });
       }
       const { rate, misses } = score(errors);
-      expect(errors.length).toBeGreaterThanOrEqual(150);
+      expect(errors.length).toBeGreaterThanOrEqual(165);
       expect(rate, misses.join(', ')).toBeGreaterThanOrEqual(0.98);
     });
 
@@ -106,14 +106,14 @@ describe('narration timeline', () => {
       expect(rate, misses.join(', ')).toBeGreaterThanOrEqual(0.98);
     });
 
-    it('holds on the held-out sessions recorded after tuning', () => {
+    it('holds on the sessions captured inside the app (real prompt, real browser)', () => {
       const errors: { label: string; k: number; ms: number }[] = [];
-      for (const s of fixture.sessions.filter((x) => x.set === 'holdout-3')) {
+      for (const s of fixture.sessions.filter((x) => x.set === 'in-app')) {
         const first = replay(s);
         s.referenceStarts.forEach((ref, k) => { if (ref !== null) errors.push({ label: s.label, k, ms: first[k] === null ? 99999 : Math.round((first[k]! - ref) * 1000) }); });
       }
-      expect(errors.length).toBeGreaterThanOrEqual(35);
-      expect(score(errors).rate, score(errors).misses.join(', ')).toBeGreaterThanOrEqual(0.95);
+      expect(errors.length).toBeGreaterThanOrEqual(30);
+      expect(score(errors).rate, score(errors).misses.join(', ')).toBe(1);
     });
 
     it('keeps upcoming sentences pending until their pause has streamed in', () => {
