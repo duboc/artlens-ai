@@ -19,6 +19,7 @@ import { fetchMissions, awardScan, MissionsState } from './services/gameApi';
 import { getMuseum } from './museums';
 import { identifyArtwork, getDeepArtworkAnalysis } from './services/geminiService';
 import { unlockAudio, NarrationRecording } from './hooks/useNarration';
+import type { PreviousStop } from './utils/narrationPrompt';
 import { useNarrationActions } from './hooks/NarrationProvider';
 import { encodeWav } from './utils/narrationTimeline';
 import { createArtworkShareCard, shareOrDownload } from './utils/shareCard';
@@ -56,6 +57,8 @@ const App: React.FC = () => {
   const [awards, setAwards] = useState<ScanAwards | null>(null);
   const [isImmersive, setIsImmersive] = useState(false);
   const wasImmersiveRef = useRef(false);
+  /** Last artwork narrated in this session (history may lag a few seconds behind a new scan). */
+  const lastStopRef = useRef<PreviousStop | null>(null);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);
@@ -348,6 +351,15 @@ const App: React.FC = () => {
     }
   };
 
+  /** The visitor's previous stop, so the guide greets only at the first artwork of a visit. */
+  const previousStop = (): PreviousStop | null => {
+    const fromHistory = history[0] ? { title: history[0].data.title, artist: history[0].data.artist, at: history[0].timestamp } : null;
+    const fromSession = lastStopRef.current;
+    if (!fromHistory) return fromSession;
+    if (!fromSession) return fromHistory;
+    return fromSession.at >= fromHistory.at ? fromSession : fromHistory;
+  };
+
   const processImageAnalysis = async (imageDataUrl: string) => {
     if (isAnalyzing || !language) return;
 
@@ -379,8 +391,10 @@ const App: React.FC = () => {
 
       // Narration with live captions (parallel, non-blocking); saved with the scan when done
       if (userContext) {
+        const previous = previousStop();
+        lastStopRef.current = { title: response.title, artist: response.artist, at: Date.now() };
         Promise.all([
-          narration.generate(response, userContext.persona, language, userContext.name),
+          narration.generate(response, userContext.persona, language, userContext.name, previous),
           scanIdPromise,
         ]).then(([recording, id]) => {
           if (recording && id) saveNarration(recording, id);

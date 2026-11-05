@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { IdentifyResponse, Language, Persona } from '../types';
 import { base64ToUint8Array } from '../utils/audioUtils';
 import { getMuseum, guideIntro } from '../museums';
+import { narrationPrompts, PreviousStop } from '../utils/narrationPrompt';
 import {
   NarrationSentence,
   PauseDetector,
@@ -64,7 +65,8 @@ export interface UseNarrationReturn {
   duration: number;
   mode: NarrationMode;
   setMode: (mode: NarrationMode) => void;
-  generate: (artData: IdentifyResponse, persona: Persona, language: Language, userName: string) => Promise<NarrationRecording | null>;
+  /** `previous`: the visitor's last stop; when recent, the guide continues the tour instead of greeting again. */
+  generate: (artData: IdentifyResponse, persona: Persona, language: Language, userName: string, previous?: PreviousStop | null) => Promise<NarrationRecording | null>;
   pause: () => void;
   resume: () => void;
   replay: (fromSec?: number) => void;
@@ -365,38 +367,6 @@ export const useNarration = (): UseNarrationReturn => {
     stop,
   };
 
-  // ─── Saved narrations (history) ───────────────────────────────────────────
-
-  const playSaved = useCallback((key: string, saved: SavedNarration, meta: NarrationMeta) => {
-    stop();
-    if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
-    chunksRef.current = [];
-    metaRef.current = meta;
-    sentencesRef.current = saved.sentences;
-    setSourceKey(key);
-    setScript(saved.script);
-    setSentences(saved.sentences);
-    setDuration(saved.durationSec);
-    setStatus('finished');
-    if (modeRef.current === 'read') setMode('listen');
-    playElement(saved.audioUrl, 0);
-  }, [playElement, setMode, stop]);
-
-  // ─── Live generation ──────────────────────────────────────────────────────
-
-  const realign = useCallback((final: boolean) => {
-    const det = detectorRef.current;
-    if (!det) return;
-    const parts = splitSentences(transcriptRef.current);
-    const rate = final ? calibratedRate(transcriptRef.current.length, det.onsets, det.duration) : DEFAULT_CHARS_PER_SEC;
-    const aligned = alignSentences(parts, det.onsets, rate, final ? Infinity : det.settledSec);
-    const prev = sentencesRef.current;
-    sentencesRef.current = aligned;
-    // Audio chunks arrive every ~160 ms; re-render only when the text or a start time changed
-    const same = prev.length === aligned.length && prev.every((p, i) => p.text === aligned[i].text && p.start === aligned[i].start);
-    if (!same) setSentences(aligned);
-  }, []);
-
   /**
    * A new scan is starting while the previous narration (already closed by the visitor) is still
    * streaming: hand its connection to a silent background collector that finishes receiving,
@@ -450,11 +420,47 @@ export const useNarration = (): UseNarrationReturn => {
     ws.onclose = () => end(null);
   }, []);
 
+  // ─── Saved narrations (history) ───────────────────────────────────────────
+
+  const playSaved = useCallback((key: string, saved: SavedNarration, meta: NarrationMeta) => {
+    // A closed narration may still be finishing in the background: keep it so it gets saved
+    handOffDetached();
+    stop();
+    if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
+    chunksRef.current = [];
+    metaRef.current = meta;
+    sentencesRef.current = saved.sentences;
+    setSourceKey(key);
+    setScript(saved.script);
+    setSentences(saved.sentences);
+    setDuration(saved.durationSec);
+    setStatus('finished');
+    if (modeRef.current === 'read') setMode('listen');
+    playElement(saved.audioUrl, 0);
+  }, [handOffDetached, playElement, setMode, stop]);
+
+  // ─── Live generation ──────────────────────────────────────────────────────
+
+  const realign = useCallback((final: boolean) => {
+    const det = detectorRef.current;
+    if (!det) return;
+    const parts = splitSentences(transcriptRef.current);
+    const rate = final ? calibratedRate(transcriptRef.current.length, det.onsets, det.duration) : DEFAULT_CHARS_PER_SEC;
+    const aligned = alignSentences(parts, det.onsets, rate, final ? Infinity : det.settledSec);
+    const prev = sentencesRef.current;
+    sentencesRef.current = aligned;
+    // Audio chunks arrive every ~160 ms; re-render only when the text or a start time changed
+    const same = prev.length === aligned.length && prev.every((p, i) => p.text === aligned[i].text && p.start === aligned[i].start);
+    if (!same) setSentences(aligned);
+  }, []);
+
+
   const generate = useCallback(async (
     artData: IdentifyResponse,
     persona: Persona,
     language: Language,
     userName: string,
+    previous: PreviousStop | null = null,
   ): Promise<NarrationRecording | null> => {
     handOffDetached();
     stop();
@@ -480,21 +486,16 @@ export const useNarration = (): UseNarrationReturn => {
     const personaDesc = PERSONA_DESCRIPTIONS[persona] || PERSONA_DESCRIPTIONS.guide;
     const langName = LANGUAGE_NAMES[language] || 'English';
     const museum = getMuseum();
-    const systemInstruction = `${guideIntro(museum)}${museum.guideContext ? `\n\n${museum.guideContext}` : ''}
-
-Personality: ${personaDesc}
-
-You will narrate a short introduction (2-3 sentences, about 15-20 seconds) for a visitor who just scanned an artwork. You must:
-1. Greet the visitor by their first name
-2. Identify the artwork naturally (title, artist)
-3. Share one compelling detail — a story, hidden meaning, technique, or surprising fact
-4. End with a brief invitation to continue the conversation
-
-Rules:
-- Speak entirely in ${langName}
-- Be natural and conversational
-- Match the personality exactly
-- Keep it tight — this is a 15-20 second intro, not a lecture`;
+    // Greet only at the first stop of a visit; afterwards continue the tour
+    const prompts = narrationPrompts({
+      museumIntro: `${guideIntro(museum)}${museum.guideContext ? `\n\n${museum.guideContext}` : ''}`,
+      personality: personaDesc,
+      languageName: langName,
+      visitorName: userName,
+      artwork: artData,
+      previous,
+    });
+    const systemInstruction = prompts.system;
 
     let ctx: AudioContext;
     try {
@@ -527,29 +528,14 @@ Rules:
         resolve(rec);
       };
 
-      /** Sends the narration request once the session is set up (also used after a hand-off). */
+      /** Sends the narration request once the session is set up. */
       const sendPrompt = () => {
-                  ws.send(JSON.stringify({
-                    client_content: {
-                      turns: [{
-                        role: 'user',
-                        parts: [{
-                          text: `Visitor name: ${userName}
-
-        Artwork:
-        - Title: ${artData.title}
-        - Artist: ${artData.artist}
-        - Year: ${artData.year || 'Unknown'}
-        - Style: ${artData.style || ''}
-        - Description: ${artData.description || ''}
-        - Fun fact: ${artData.funFact || ''}
-
-        Begin your narration now.`,
-                        }],
-                      }],
-                      turn_complete: true,
-                    },
-                  }));
+        ws.send(JSON.stringify({
+          client_content: {
+            turns: [{ role: 'user', parts: [{ text: prompts.user }] }],
+            turn_complete: true,
+          },
+        }));
       };
 
       ws.onopen = () => {

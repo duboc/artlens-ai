@@ -115,6 +115,14 @@ export class PauseDetector {
  * onset; each next one is expected `chars / rate` after the previous start and
  * snaps to the nearest pause onset in a window around that estimate.
  */
+/**
+ * Characters as spoken: numbers are read as words ("1929" → "nineteen twenty-nine"), so a
+ * plain character count underestimates how long a sentence with years or dates takes.
+ */
+export function spokenLength(text: string): number {
+  return text.replace(/\d+/g, (d) => (d.length === 4 ? 'x'.repeat(18) : 'x'.repeat(d.length * 5))).length;
+}
+
 /** Streaming commit threshold, chosen on recorded Live sessions (scratch eval_stream). */
 export const STREAM_COMMIT_SCORE = 0.25;
 /**
@@ -122,6 +130,8 @@ export const STREAM_COMMIT_SCORE = 0.25;
  * of the measured rate fixes fast voices without letting one odd sentence swing the estimate.
  */
 export const STREAM_RATE_BLEND = 0.25;
+/** Streaming tolerance for the end of a long opening sentence (fraction of its estimated duration). */
+export const STREAM_FIRST_TOLERANCE = 0.2;
 /**
  * In recorded sessions 62 of 83 sentence-end pauses last ≥ 0.4 s against 14 of 53 comma pauses;
  * a long pause may sit further from the estimate (the voice speeds up within a narration).
@@ -166,7 +176,7 @@ export function alignSentences(
       const measured = Math.min(22, Math.max(10, (prev.charStart - sentences[1].charStart) / (prevStart - result[1].start)));
       rate = charsPerSec * (1 - rateBlend) + measured * rateBlend;
     }
-    const prevDur = prev.text.length / rate;
+    const prevDur = spokenLength(prev.text) / rate;
     const est = prevStart + prevDur;
     // Where the previous sentence's own commas should fall: pauses there are not sentence ends
     const commaTimes: number[] = [];
@@ -185,6 +195,9 @@ export function alignSentences(
     const windowOpen = hi > audioReceivedSec;
     const goodMatch = (o: PauseOnset) => {
       const d = Math.abs(o.time - o.gap - est);
+      // A long opening sentence (no short greeting before it, as at later stops of a visit) has
+      // no measured rate yet and often a comma pause near its end: be stricter there
+      if (k === 1 && prev.text.length > 40) return d <= STREAM_FIRST_TOLERANCE * prevDur + 0.15;
       return d <= commitScore * prevDur + 0.15 || (o.gap >= longPause.gap && d <= longPause.tolerance * prevDur + 0.15);
     };
     let best: PauseOnset | null = null;
