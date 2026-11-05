@@ -1,11 +1,14 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Language } from '../types';
-import { t } from '../utils/i18n';
+import { t, tf } from '../utils/i18n';
 
 interface HUDOverlayProps {
   isScanning: boolean;
   onScan: () => void;
-  onUpload: (file: File) => void;
+  /** Most recent capture (thumbnail next to the shutter, like a camera app); null before the first scan. */
+  lastCapture?: { imageUrl: string; title: string; count: number } | null;
+  /** Reopen earlier captures and everything done with them. */
+  onOpenCaptures?: () => void;
   hasResult: boolean;
   language: Language;
   /** Visitor's game points; null while unknown (hides the pill). */
@@ -19,7 +22,8 @@ interface HUDOverlayProps {
 export const HUDOverlay: React.FC<HUDOverlayProps> = ({
   isScanning,
   onScan,
-  onUpload,
+  lastCapture = null,
+  onOpenCaptures,
   hasResult,
   language,
   points,
@@ -27,17 +31,7 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
   bottomInset = 0,
   children
 }) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isShutterDisabled, setIsShutterDisabled] = useState(false);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      onUpload(e.target.files[0]);
-    }
-    if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-    }
-  };
 
   const handleScan = useCallback(() => {
     if (isShutterDisabled || isScanning) return;
@@ -121,23 +115,16 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
             {children}
         </div>
 
-        {/* Shutter & Upload Buttons */}
+        {/* Shutter + last capture (camera only: nothing is uploaded from the device) */}
         {!hasResult && (
           <div className="absolute left-0 right-0 flex items-center justify-center pb-safe-bottom pointer-events-auto transition-all duration-300 transform" style={{ bottom: bottomInset + 48 }}>
 
-            {/* Upload Input */}
-            <input
-              type="file"
-              ref={fileInputRef}
-              className="hidden"
-              accept="image/*"
-              onChange={handleFileChange}
-            />
-
             {/* Shutter Button — gold ring */}
             <button
+              type="button"
               onClick={handleScan}
               disabled={isScanning || isShutterDisabled}
+              aria-label={isScanning ? t('hud.analyzing', language) : t('hud.tapToIdentify', language)}
               className={`relative flex items-center justify-center rounded-full transition-all duration-300 z-10
                 ${isScanning
                   ? 'w-16 h-16 scale-95 cursor-wait'
@@ -150,25 +137,26 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
               {/* Inner Circle */}
               <div className={`rounded-full transition-all duration-300 ${isScanning ? 'w-8 h-8 bg-primary/60 rounded-md' : 'w-16 h-16 bg-[var(--text)]/90'}`} />
 
-              {/* Glow on idle */}
-              {!isScanning && (
-                <div className="absolute inset-0 rounded-full animate-glow-pulse" />
-              )}
             </button>
 
-            {/* Upload Button */}
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isScanning}
-              className={`absolute right-8 sm:right-16 p-3.5 rounded-full warm-glass text-[var(--text)] hover:border-primary/30 transition-all duration-300 active:scale-95
-                  ${isScanning ? 'opacity-0 pointer-events-none' : 'opacity-100'}
-              `}
-              aria-label="Upload Image"
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </button>
+            {/* Last capture: reopens earlier artworks with their narration, chat and quiz */}
+            {lastCapture && onOpenCaptures && (
+              <button
+                type="button"
+                onClick={onOpenCaptures}
+                disabled={isScanning}
+                aria-label={tf('captures.open', language, { n: lastCapture.count })}
+                className={`absolute right-8 sm:right-16 w-14 h-14 rounded-2xl overflow-hidden border-2 border-[var(--text)]/80 bg-[var(--surface)] active:scale-95 transition-all duration-300
+                  ${isScanning ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+              >
+                <img src={lastCapture.imageUrl} alt="" width={56} height={56} draggable={false} className="w-full h-full object-cover" />
+                {lastCapture.count > 1 && (
+                  <span className="absolute bottom-0.5 right-0.5 min-w-[20px] h-5 px-1 rounded-full bg-primary-dark text-onPrimary font-mono tabular text-xs leading-5 text-center">
+                    {lastCapture.count}
+                  </span>
+                )}
+              </button>
+            )}
 
             <p className="absolute -bottom-8 text-center text-xs font-medium text-secondary/70 tracking-wide w-full">
               {isScanning ? t('hud.analyzing', language) : t('hud.tapToIdentify', language)}

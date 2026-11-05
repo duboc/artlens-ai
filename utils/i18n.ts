@@ -315,7 +315,8 @@ const translations: Record<string, Record<Language, string>> = {
   },
 
   // History
-  'history.title': { en: 'HISTORY', pt: 'HISTÓRICO', es: 'HISTORIAL' },
+  'history.title': { en: 'Your scans', pt: 'Seus scans', es: 'Tus escaneos' },
+  'history.quizScore': { en: 'quiz {correct}/{total}', pt: 'quiz {correct}/{total}', es: 'quiz {correct}/{total}' },
   'history.noScans': {
     en: 'No scans yet',
     pt: 'Nenhum escaneamento',
@@ -452,6 +453,13 @@ const translations: Record<string, Record<Language, string>> = {
 
   // Quiz
   'quiz.cta': { en: 'Quiz: 3 questions', pt: 'Quiz: 3 perguntas', es: 'Quiz: 3 preguntas' },
+  'quiz.ctaResume': { en: 'Resume the quiz', pt: 'Continuar o quiz', es: 'Seguir el quiz' },
+  'quiz.ctaReview': { en: 'Review the quiz', pt: 'Rever o quiz', es: 'Revisar el quiz' },
+  'quiz.ctaScore': { en: '{correct} right · {answered}/{total}', pt: '{correct} certas · {answered}/{total}', es: '{correct} bien · {answered}/{total}' },
+  'result.chatContinue': { en: 'Continue the chat', pt: 'Continuar a conversa', es: 'Seguir la conversación' },
+  'result.chatMessages': { en: '{n} messages', pt: '{n} mensagens', es: '{n} mensajes' },
+  'result.chatMessagesOne': { en: '1 message', pt: '1 mensagem', es: '1 mensaje' },
+  'captures.open': { en: 'Your scans ({n}): reopen artworks, narration, chat and quiz', pt: 'Seus scans ({n}): reabrir obras, narração, conversa e quiz', es: 'Tus escaneos ({n}): volver a obras, narración, conversación y quiz' },
   'quiz.ctaPoints': { en: 'up to {points} pts', pt: 'até {points} pts', es: 'hasta {points} pts' },
   'quiz.ctaDone': { en: 'Quiz done · review answers', pt: 'Quiz feito · rever respostas', es: 'Quiz hecho · ver respuestas' },
   'quiz.progress': { en: 'Question {n} of {total}', pt: 'Pergunta {n} de {total}', es: 'Pregunta {n} de {total}' },

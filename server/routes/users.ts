@@ -213,10 +213,18 @@ router.get('/:userId/scans', authMiddleware, async (req: Request, res: Response)
     const scans = snapshot.docs.map(doc => {
       const data = doc.data();
       const imageUrl = `/api/images/users/${userId}/scans/${doc.id}.jpg`;
+      const quizAnswers = Object.values(data.quiz?.answers || {}) as Array<{ correct?: boolean }>;
       return {
         id: doc.id,
         timestamp: data.createdAt?.toMillis?.() || 0,
         imageUrl,
+        // What the visitor already did with this artwork (shown when they go back to it)
+        activity: {
+          chatMessages: data.chatCount || 0,
+          quiz: data.quiz?.questions?.length
+            ? { answered: quizAnswers.length, correct: quizAnswers.filter((a) => a.correct).length, total: data.quiz.questions.length }
+            : undefined,
+        },
         data: {
           title: data.artworkTitle || '',
           artist: data.artist || '',

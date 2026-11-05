@@ -283,7 +283,7 @@ export const useGeminiLive = (): UseGeminiLiveReturn => {
 
           // setupComplete → mark as connected, start audio pipeline, resolve promise
           if (msg.setupComplete !== undefined) {
-            console.log('[audio] Live Session Connected, outputCtx:', localOutputCtx.state);
+            console.log('[audio] Live Session Connected, outputCtx:', localOutputCtx?.state);
             setIsConnected(true);
 
             if (localInputCtx) {

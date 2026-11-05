@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { HistoryItem, Language } from '../types';
-import { t } from '../utils/i18n';
+import { t, tf } from '../utils/i18n';
 
 interface HistoryDrawerProps {
   isOpen: boolean;
@@ -50,23 +50,32 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({ isOpen, history, l
               </div>
           ) : (
               history.map((item) => (
-                  <div
+                  <button
+                    type="button"
                     key={item.id}
                     onClick={() => onSelect(item)}
-                    className="p-4 border-b border-[var(--primary-dim)] hover:bg-primary/5 active:bg-primary/10 cursor-pointer flex gap-4 transition-colors duration-300 items-center"
+                    className="w-full text-left p-4 min-h-[72px] border-b border-white/[0.08] hover:bg-primary/5 active:bg-primary/10 flex gap-4 transition-colors duration-300 items-center"
                   >
                       <HistoryThumbnail imageUrl={item.imageUrl} title={item.data.title} />
                       <div className="flex-1 overflow-hidden">
                           <div className="font-serif text-[var(--text)] text-sm truncate">{item.data.title}</div>
-                          <div className="text-primary/60 text-xs truncate mb-1">{item.data.artist}</div>
-                          <div className="text-secondary/30 text-[10px] font-mono">
-                              {new Date(item.timestamp).toLocaleDateString()} · {new Date(item.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          <div className="text-secondary text-xs truncate">{item.data.artist}</div>
+                          <div className="text-secondary text-xs font-mono tabular mt-0.5">
+                              {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </div>
+                          {(item.activity?.chatMessages || item.activity?.quiz?.answered) ? (
+                            <div className="text-primary text-xs mt-0.5 truncate">
+                              {[
+                                item.activity?.chatMessages ? tf(item.activity.chatMessages === 1 ? 'result.chatMessagesOne' : 'result.chatMessages', language, { n: item.activity.chatMessages }) : null,
+                                item.activity?.quiz?.answered ? tf('history.quizScore', language, { correct: item.activity.quiz.correct, total: item.activity.quiz.total }) : null,
+                              ].filter(Boolean).join(' · ')}
+                            </div>
+                          ) : null}
                       </div>
-                      <div className="text-secondary/20">
+                      <div className="text-secondary" aria-hidden="true">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" /></svg>
                       </div>
-                  </div>
+                  </button>
               ))
           )}
         </div>

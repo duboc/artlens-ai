@@ -1,5 +1,5 @@
 import React from 'react';
-import { IdentifyResponse, Language, UserContext } from '../../types';
+import { IdentifyResponse, Language, ScanActivity, UserContext } from '../../types';
 import { t, tf } from '../../utils/i18n';
 import { QUIZ_MAX_POINTS } from '../../museums/scoring';
 import type { SavedNarration } from '../../hooks/useNarration';
@@ -13,6 +13,8 @@ export interface SheetPage {
   data: IdentifyResponse;
   imageUrl: string | null;
   scanId: string | null;
+  /** What the visitor already did with this artwork (chat messages, quiz answers). */
+  activity?: ScanActivity;
 }
 
 interface ScanPageProps {
@@ -38,6 +40,11 @@ export const ScanPage: React.FC<ScanPageProps> = ({
 }) => {
   const { data } = page;
   const saved: SavedNarration | undefined = data.narration;
+  const chatCount = page.activity?.chatMessages ?? 0;
+  const quiz = page.activity?.quiz;
+  const quizLabel = !quiz || quiz.answered === 0
+    ? t('quiz.cta', language)
+    : quiz.answered < quiz.total ? t('quiz.ctaResume', language) : t('quiz.ctaReview', language);
 
   return (
     <article className="scan-article px-5 pb-[calc(env(safe-area-inset-bottom,0px)+32px)]">
@@ -77,7 +84,9 @@ export const ScanPage: React.FC<ScanPageProps> = ({
           className="w-full min-h-[52px] rounded-full bg-primary-dark text-onPrimary font-medium text-base flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
         >
           <ChatIcon className="w-5 h-5" />
-          {t('result.chatWith', language)} {personaLabel(userContext.persona, language)}
+          {chatCount > 0
+            ? <>{t('result.chatContinue', language)}<span className="font-mono tabular text-sm opacity-90">· {tf(chatCount === 1 ? 'result.chatMessagesOne' : 'result.chatMessages', language, { n: chatCount })}</span></>
+            : <>{t('result.chatWith', language)} {personaLabel(userContext.persona, language)}</>}
         </button>
         <button
           type="button"
@@ -87,10 +96,14 @@ export const ScanPage: React.FC<ScanPageProps> = ({
         >
           <span className="flex items-center gap-2 whitespace-nowrap">
             <QuizIcon className="w-5 h-5 text-primary" />
-            {t('quiz.cta', language)}
+            {quizLabel}
           </span>
           {page.scanId ? (
-            <span className="font-mono tabular text-xs text-secondary whitespace-nowrap">{tf('quiz.ctaPoints', language, { points: QUIZ_MAX_POINTS })}</span>
+            <span className="font-mono tabular text-xs text-secondary whitespace-nowrap">
+              {quiz && quiz.answered > 0
+                ? tf('quiz.ctaScore', language, { correct: quiz.correct, answered: quiz.answered, total: quiz.total })
+                : tf('quiz.ctaPoints', language, { points: QUIZ_MAX_POINTS })}
+            </span>
           ) : (
             <span className="text-xs text-secondary whitespace-nowrap">{t('quiz.saving', language)}</span>
           )}

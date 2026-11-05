@@ -98,6 +98,10 @@ Scale actually in use (12px floor — nothing smaller is allowed in new code):
   above safe area, 24px line icons + 12px label, active = `text-primary` + `aria-current="page"`.
   Open-missions count = mono badge on `primary-dark`. Hidden while chat/quiz is immersive.
 - **Points pill** (HUD top-right): glass, `h-11`, mono number + 12px unit, opens Missions.
+- **Last capture** (HUD, right of the shutter): 56px rounded-2xl thumbnail with a 2px light border and a
+  mono count chip on `primary-dark`. It reopens earlier scans. Camera only: there is no upload button.
+- **Activity on an earlier scan**: the chat CTA becomes "Continue the chat · N messages" (count in mono),
+  and the quiz row becomes "Resume / Review the quiz" with "N right · a/t" in mono on the right.
 - **StatusPip** (`icons.tsx`): 24px; done = filled blue disc + check, open = 1.5px ring `secondary/60`.
   `role="img"` + label. Icons: 24px grid, 1.5px stroke, round caps.
 - **Ledger row / Fact row / Nav row**: see §4; trailing value always mono, right-aligned.
