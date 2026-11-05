@@ -92,7 +92,7 @@ router.get('/*', async (req: Request, res: Response) => {
       return;
     }
 
-    await streamToResponse(path, res);
+    await streamToResponse(path, res, req.headers.range);
   } catch (err: any) {
     if (err.message === 'File not found') {
       res.status(404).json({ error: 'Image not found' });

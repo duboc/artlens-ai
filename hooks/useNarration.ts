@@ -1,15 +1,85 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { IdentifyResponse, Language, Persona } from '../types';
-import { base64ToUint8Array, decodeAudioData } from '../utils/audioUtils';
+import { base64ToUint8Array } from '../utils/audioUtils';
 import { getMuseum, guideIntro } from '../museums';
+import {
+  NarrationSentence,
+  PauseDetector,
+  alignSentences,
+  calibratedRate,
+  encodeWav,
+  sentenceAt,
+  splitSentences,
+  DEFAULT_CHARS_PER_SEC,
+} from '../utils/narrationTimeline';
 
-interface UseNarrationReturn {
+/**
+ * Narration engine for the post-scan intro.
+ *
+ * - First play streams from Gemini Live through Web Audio; pause/resume suspend
+ *   the AudioContext, and the text is lined up with the audio by
+ *   utils/narrationTimeline (only data the Live session already streams).
+ * - Everything received is kept locally, so "listen again" plays the buffered
+ *   audio through an <audio> element: no new Live session, and the OS shows
+ *   lock-screen controls (Media Session API).
+ * - Saved narrations (history) play the same way from their stored WAV.
+ */
+
+export type NarrationMode = 'listen' | 'read';
+export type NarrationStatus = 'idle' | 'connecting' | 'streaming' | 'finished' | 'error';
+
+export interface NarrationRecording {
+  pcm: Int16Array;
+  script: string;
+  sentences: NarrationSentence[];
+  durationSec: number;
+}
+
+/** A narration persisted with a scan. */
+export interface SavedNarration {
+  audioUrl: string;
+  script: string;
+  sentences: NarrationSentence[];
+  durationSec: number;
+}
+
+export interface NarrationMeta {
+  title: string;
+  artist: string;
+  artworkUrl?: string | null;
+}
+
+export interface UseNarrationReturn {
+  status: NarrationStatus;
+  /** Scan the engine currently holds ('current' for the live scan, or a history scan id). */
+  sourceKey: string | null;
   isGenerating: boolean;
   isPlaying: boolean;
+  isPaused: boolean;
   script: string | null;
-  generate: (artData: IdentifyResponse, persona: Persona, language: Language, userName: string) => Promise<void>;
+  sentences: NarrationSentence[];
+  activeSentence: number;
+  /** Playback position in seconds, read on demand (not React state: no re-render per frame). */
+  getPosition: () => number;
+  duration: number;
+  mode: NarrationMode;
+  setMode: (mode: NarrationMode) => void;
+  generate: (artData: IdentifyResponse, persona: Persona, language: Language, userName: string) => Promise<NarrationRecording | null>;
+  pause: () => void;
+  resume: () => void;
+  replay: (fromSec?: number) => void;
+  playSaved: (key: string, saved: SavedNarration, meta: NarrationMeta) => void;
   stop: () => void;
+  /**
+   * The page went to the background (screen locked, app switched). Saved audio keeps playing
+   * with lock-screen controls; the live stream (Web Audio, no lock-screen controls) pauses so
+   * it can be resumed.
+   */
+  backgrounded: () => void;
 }
+
+const SAMPLE_RATE = 24000;
+const MODE_KEY = 'artlens_narrationMode';
 
 const VOICE_MAP: Record<string, string> = {
   guide: 'Zephyr',
@@ -29,58 +99,325 @@ const LANGUAGE_NAMES: Record<string, string> = {
   es: 'Spanish',
 };
 
+// ─── Shared audio context (unlocked on the scan gesture) ────────────────────
+
+let sharedCtx: AudioContext | null = null;
+
+function audioContext(): AudioContext {
+  if (!sharedCtx || sharedCtx.state === 'closed') {
+    const Ctor = window.AudioContext || (window as any).webkitAudioContext;
+    sharedCtx = new Ctor({ sampleRate: SAMPLE_RATE });
+  }
+  return sharedCtx;
+}
+
+/** Call synchronously inside a user gesture (e.g. the shutter tap) so iOS lets audio play later. */
+export function unlockAudio(): void {
+  try {
+    const ctx = audioContext();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+  } catch { /* no Web Audio */ }
+}
+
+function readMode(): NarrationMode {
+  try {
+    return localStorage.getItem(MODE_KEY) === 'read' ? 'read' : 'listen';
+  } catch {
+    return 'listen';
+  }
+}
+
+function pcmChunkToBuffer(ctx: AudioContext, pcm: Int16Array): AudioBuffer {
+  const buffer = ctx.createBuffer(1, pcm.length, SAMPLE_RATE);
+  const ch = buffer.getChannelData(0);
+  for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
+  return buffer;
+}
+
+function concat(chunks: Int16Array[]): Int16Array {
+  const total = chunks.reduce((n, c) => n + c.length, 0);
+  const out = new Int16Array(total);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
+}
+
 export const useNarration = (): UseNarrationReturn => {
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [status, setStatus] = useState<NarrationStatus>('idle');
+  const [sourceKey, setSourceKey] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [script, setScript] = useState<string | null>(null);
+  const [sentences, setSentences] = useState<NarrationSentence[]>([]);
+  const [activeSentence, setActiveSentence] = useState(-1);
+  const [duration, setDuration] = useState(0);
+  const [mode, setModeState] = useState<NarrationMode>(readMode);
 
   const wsRef = useRef<WebSocket | null>(null);
-  const outputContextRef = useRef<AudioContext | null>(null);
-  const nextStartTimeRef = useRef<number>(0);
-  const scheduledSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
-  const transcriptRef = useRef<string>('');
+  const gainRef = useRef<GainNode | null>(null);
+  const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+  const nextStartRef = useRef(0);
+  const startAtRef = useRef<number | null>(null);
+  const chunksRef = useRef<Int16Array[]>([]);
+  const detectorRef = useRef<PauseDetector | null>(null);
+  const transcriptRef = useRef('');
+  const sentencesRef = useRef<NarrationSentence[]>([]);
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const blobUrlRef = useRef<string | null>(null);
+  const engineRef = useRef<'live' | 'element' | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const metaRef = useRef<NarrationMeta | null>(null);
+  const modeRef = useRef<NarrationMode>(mode);
+  const resolveRef = useRef<((rec: NarrationRecording | null) => void) | null>(null);
+  const sessionRef = useRef(0);
+
+  // ─── Position clock ───────────────────────────────────────────────────────
+
+  const currentPosition = useCallback((): number => {
+    if (engineRef.current === 'element' && audioElRef.current) return audioElRef.current.currentTime;
+    if (engineRef.current === 'live' && startAtRef.current !== null && sharedCtx) {
+      return Math.max(0, sharedCtx.currentTime - startAtRef.current);
+    }
+    return 0;
+  }, []);
+
+  const tick = useCallback(() => {
+    const pos = currentPosition();
+    const idx = modeRef.current === 'read' ? -1 : sentenceAt(sentencesRef.current, pos);
+    setActiveSentence((prev) => (prev === idx ? prev : idx));
+    if (typeof window !== 'undefined') {
+      const dbg = (window as any).__artlensNarration;
+      if (dbg && idx !== dbg.lastIdx) {
+        dbg.lastIdx = idx;
+        dbg.highlights.push({ idx, position: pos, start: sentencesRef.current[idx]?.start ?? null, at: Math.round(performance.now()) });
+      }
+    }
+    rafRef.current = requestAnimationFrame(tick);
+  }, [currentPosition]);
+
+  const startClock = useCallback(() => {
+    if (rafRef.current === null) rafRef.current = requestAnimationFrame(tick);
+  }, [tick]);
+
+  const stopClock = useCallback(() => {
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+  }, []);
+
+  // ─── Media Session (lock-screen controls) ─────────────────────────────────
+
+  const handlersRef = useRef<{ pause: () => void; resume: () => void; stop: () => void }>({ pause: () => {}, resume: () => {}, stop: () => {} });
+
+  const updateMediaSession = useCallback((state: 'playing' | 'paused' | 'none') => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    const ms = navigator.mediaSession;
+    const meta = metaRef.current;
+    if (meta && state !== 'none' && typeof MediaMetadata !== 'undefined') {
+      ms.metadata = new MediaMetadata({
+        title: meta.title,
+        artist: meta.artist,
+        album: getMuseum().shortName,
+        artwork: meta.artworkUrl ? [{ src: meta.artworkUrl, sizes: '512x512', type: 'image/jpeg' }] : [],
+      });
+    }
+    ms.playbackState = state;
+    try {
+      ms.setActionHandler('play', () => handlersRef.current.resume());
+      ms.setActionHandler('pause', () => handlersRef.current.pause());
+      ms.setActionHandler('stop', () => handlersRef.current.stop());
+    } catch { /* unsupported action */ }
+  }, []);
+
+  // ─── Stop everything ──────────────────────────────────────────────────────
+
+  const stopPlayback = useCallback(() => {
+    sourcesRef.current.forEach((s) => { try { s.stop(); } catch {} });
+    sourcesRef.current.clear();
+    if (audioElRef.current) {
+      audioElRef.current.pause();
+      audioElRef.current.onended = null;
+    }
+    if (sharedCtx && sharedCtx.state === 'suspended') sharedCtx.resume().catch(() => {});
+    stopClock();
+    setIsPlaying(false);
+    setIsPaused(false);
+  }, [stopClock]);
 
   const stop = useCallback(() => {
+    sessionRef.current++;
     if (wsRef.current) {
-      if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) {
-        wsRef.current.close();
-      }
+      try { wsRef.current.close(); } catch {}
       wsRef.current = null;
     }
-    scheduledSourcesRef.current.forEach(s => {
-      try { s.stop(); } catch {}
-    });
-    scheduledSourcesRef.current.clear();
-    nextStartTimeRef.current = 0;
-    if (outputContextRef.current) {
-      outputContextRef.current.close().catch(() => {});
-      outputContextRef.current = null;
-    }
-    setIsPlaying(false);
-    setIsGenerating(false);
-  }, []);
+    stopPlayback();
+    engineRef.current = null;
+    startAtRef.current = null;
+    nextStartRef.current = 0;
+    resolveRef.current?.(null);
+    resolveRef.current = null;
+    setStatus((s) => (s === 'connecting' || s === 'streaming' ? 'idle' : s));
+    updateMediaSession('none');
+  }, [stopPlayback, updateMediaSession]);
 
   // Cleanup on unmount
   useEffect(() => {
-    return () => { stop(); };
+    return () => {
+      stop();
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+    };
   }, [stop]);
+
+  // ─── Pause / resume ───────────────────────────────────────────────────────
+
+  const pause = useCallback(() => {
+    if (engineRef.current === 'live' && sharedCtx) {
+      sharedCtx.suspend().catch(() => {});
+    } else if (engineRef.current === 'element') {
+      audioElRef.current?.pause();
+    } else {
+      return;
+    }
+    setIsPaused(true);
+    setIsPlaying(false);
+    updateMediaSession('paused');
+  }, [updateMediaSession]);
+
+  const playElement = useCallback((url: string, fromSec: number) => {
+    if (!audioElRef.current) {
+      audioElRef.current = new Audio();
+      audioElRef.current.preload = 'auto';
+    }
+    const el = audioElRef.current;
+    if (el.src !== url) el.src = url;
+    engineRef.current = 'element';
+    el.onended = () => {
+      setIsPlaying(false);
+      setIsPaused(false);
+      stopClock();
+      setActiveSentence(-1);
+      updateMediaSession('none');
+    };
+    const start = () => {
+      try { el.currentTime = fromSec; } catch {}
+      el.play().then(() => {
+        setIsPlaying(true);
+        setIsPaused(false);
+        startClock();
+        updateMediaSession('playing');
+      }).catch((err) => console.error('[narration] play failed:', err));
+    };
+    if (el.readyState >= 1) start();
+    else el.addEventListener('loadedmetadata', start, { once: true });
+  }, [startClock, stopClock, updateMediaSession]);
+
+  const resume = useCallback(() => {
+    if (engineRef.current === 'live' && sharedCtx) {
+      sharedCtx.resume().catch(() => {});
+      setIsPaused(false);
+      setIsPlaying(true);
+      updateMediaSession('playing');
+    } else if (engineRef.current === 'element' && audioElRef.current) {
+      audioElRef.current.play().then(() => {
+        setIsPaused(false);
+        setIsPlaying(true);
+        startClock();
+        updateMediaSession('playing');
+      }).catch(() => {});
+    }
+  }, [startClock, updateMediaSession]);
+
+  /** Play the buffered narration again from `fromSec` without contacting the server. */
+  const replay = useCallback((fromSec = 0) => {
+    if (!blobUrlRef.current) {
+      if (!chunksRef.current.length) return;
+      const wav = encodeWav(concat(chunksRef.current), SAMPLE_RATE);
+      blobUrlRef.current = URL.createObjectURL(new Blob([wav], { type: 'audio/wav' }));
+    }
+    sourcesRef.current.forEach((s) => { try { s.stop(); } catch {} });
+    sourcesRef.current.clear();
+    if (sharedCtx && sharedCtx.state === 'suspended') sharedCtx.resume().catch(() => {});
+    playElement(blobUrlRef.current, fromSec);
+  }, [playElement]);
+
+  const setMode = useCallback((next: NarrationMode) => {
+    modeRef.current = next;
+    setModeState(next);
+    try { localStorage.setItem(MODE_KEY, next); } catch {}
+    if (gainRef.current) gainRef.current.gain.value = next === 'read' ? 0 : 1;
+    if (next === 'read') {
+      if (engineRef.current === 'element') audioElRef.current?.pause();
+      setActiveSentence(-1);
+      setIsPlaying(false);
+      updateMediaSession('none');
+    }
+  }, [updateMediaSession]);
+
+  handlersRef.current = {
+    pause,
+    resume: () => (isPaused ? resume() : replay(0)),
+    stop,
+  };
+
+  // ─── Saved narrations (history) ───────────────────────────────────────────
+
+  const playSaved = useCallback((key: string, saved: SavedNarration, meta: NarrationMeta) => {
+    stop();
+    if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
+    chunksRef.current = [];
+    metaRef.current = meta;
+    sentencesRef.current = saved.sentences;
+    setSourceKey(key);
+    setScript(saved.script);
+    setSentences(saved.sentences);
+    setDuration(saved.durationSec);
+    setStatus('finished');
+    if (modeRef.current === 'read') setMode('listen');
+    playElement(saved.audioUrl, 0);
+  }, [playElement, setMode, stop]);
+
+  // ─── Live generation ──────────────────────────────────────────────────────
+
+  const realign = useCallback((final: boolean) => {
+    const det = detectorRef.current;
+    if (!det) return;
+    const parts = splitSentences(transcriptRef.current);
+    const rate = final ? calibratedRate(transcriptRef.current.length, det.onsets, det.duration) : DEFAULT_CHARS_PER_SEC;
+    const aligned = alignSentences(parts, det.onsets, rate, final ? Infinity : det.settledSec);
+    const prev = sentencesRef.current;
+    sentencesRef.current = aligned;
+    // Audio chunks arrive every ~160 ms; re-render only when the text or a start time changed
+    const same = prev.length === aligned.length && prev.every((p, i) => p.text === aligned[i].text && p.start === aligned[i].start);
+    if (!same) setSentences(aligned);
+  }, []);
 
   const generate = useCallback(async (
     artData: IdentifyResponse,
     persona: Persona,
     language: Language,
     userName: string,
-  ) => {
-    // Stop any existing narration
+  ): Promise<NarrationRecording | null> => {
     stop();
-    setScript(null);
-    setIsGenerating(true);
+    const session = ++sessionRef.current;
+    if (blobUrlRef.current) { URL.revokeObjectURL(blobUrlRef.current); blobUrlRef.current = null; }
+    chunksRef.current = [];
+    detectorRef.current = new PauseDetector(SAMPLE_RATE);
     transcriptRef.current = '';
+    sentencesRef.current = [];
+    metaRef.current = { title: artData.title, artist: artData.artist };
+    setSourceKey('current');
+    setScript(null);
+    setSentences([]);
+    setActiveSentence(-1);
+    setDuration(0);
+    setStatus('connecting');
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug')) {
+      (window as any).__artlensNarration = { highlights: [], lastIdx: -1, wsOpened: 0, ctx: () => sharedCtx?.state, sentences: () => sentencesRef.current,
+        element: () => { const el = audioElRef.current; return el ? { src: el.src, paused: el.paused, currentTime: el.currentTime, error: el.error?.code ?? null } : null; } };
+    }
 
     const voice = VOICE_MAP[persona] || 'Zephyr';
     const personaDesc = PERSONA_DESCRIPTIONS[persona] || PERSONA_DESCRIPTIONS.guide;
     const langName = LANGUAGE_NAMES[language] || 'English';
-
     const museum = getMuseum();
     const systemInstruction = `${guideIntro(museum)}${museum.guideContext ? `\n\n${museum.guideContext}` : ''}
 
@@ -98,59 +435,67 @@ Rules:
 - Match the personality exactly
 - Keep it tight — this is a 15-20 second intro, not a lecture`;
 
+    let ctx: AudioContext;
     try {
-      // Create AudioContext for playback
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      outputContextRef.current = ctx;
-      if (ctx.state === 'suspended') {
-        await ctx.resume();
-      }
+      ctx = audioContext();
+      if (ctx.state === 'suspended') await ctx.resume().catch(() => {});
+    } catch (err) {
+      console.error('[narration] No audio context:', err);
+      setStatus('error');
+      return null;
+    }
+    const gain = ctx.createGain();
+    gain.gain.value = modeRef.current === 'read' ? 0 : 1;
+    gain.connect(ctx.destination);
+    gainRef.current = gain;
+    engineRef.current = 'live';
+    startAtRef.current = null;
+    nextStartRef.current = 0;
 
+    return new Promise<NarrationRecording | null>((resolve) => {
+      resolveRef.current = resolve;
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${wsProtocol}//${window.location.host}/ws/live`;
+      const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/live`);
+      wsRef.current = ws;
+      const dbg = (window as any).__artlensNarration;
+      if (dbg) dbg.wsOpened++;
 
-      await new Promise<void>((resolve, reject) => {
-        const ws = new WebSocket(wsUrl);
-        wsRef.current = ws;
+      const finish = (rec: NarrationRecording | null) => {
+        if (resolveRef.current === resolve) resolveRef.current = null;
+        resolve(rec);
+      };
 
-        ws.onopen = () => {
-          ws.send(JSON.stringify({
-            setup: {
-              // model is injected server-side (MODEL_LIVE)
-              generation_config: {
-                response_modalities: ['AUDIO'],
-                speech_config: {
-                  voice_config: {
-                    prebuilt_voice_config: { voice_name: voice },
-                  },
-                },
-              },
-              system_instruction: {
-                parts: [{ text: systemInstruction }],
-              },
-              output_audio_transcription: {},
+      ws.onopen = () => {
+        ws.send(JSON.stringify({
+          setup: {
+            // model is injected server-side (MODEL_LIVE)
+            generation_config: {
+              response_modalities: ['AUDIO'],
+              speech_config: { voice_config: { prebuilt_voice_config: { voice_name: voice } } },
             },
-          }));
-        };
+            system_instruction: { parts: [{ text: systemInstruction }] },
+            output_audio_transcription: {},
+          },
+        }));
+      };
 
-        ws.onmessage = async (event) => {
-          let msg: any;
-          try {
-            msg = JSON.parse(typeof event.data === 'string' ? event.data : await event.data.text());
-          } catch {
-            return;
-          }
+      ws.onmessage = async (event) => {
+        if (session !== sessionRef.current) return;
+        let msg: any;
+        try {
+          msg = JSON.parse(typeof event.data === 'string' ? event.data : await event.data.text());
+        } catch {
+          return;
+        }
 
-          // Setup complete → send narration prompt
-          if (msg.setupComplete !== undefined) {
-            setIsGenerating(false);
-
-            ws.send(JSON.stringify({
-              client_content: {
-                turns: [{
-                  role: 'user',
-                  parts: [{
-                    text: `Visitor name: ${userName}
+        if (msg.setupComplete !== undefined) {
+          setStatus('streaming');
+          ws.send(JSON.stringify({
+            client_content: {
+              turns: [{
+                role: 'user',
+                parts: [{
+                  text: `Visitor name: ${userName}
 
 Artwork:
 - Title: ${artData.title}
@@ -161,83 +506,122 @@ Artwork:
 - Fun fact: ${artData.funFact || ''}
 
 Begin your narration now.`,
-                  }],
                 }],
-                turn_complete: true,
-              },
-            }));
-            resolve();
-            return;
+              }],
+              turn_complete: true,
+            },
+          }));
+          return;
+        }
+
+        const sc = msg.serverContent;
+        if (!sc) return;
+        let changed = false;
+
+        if (sc.outputTranscription?.text) {
+          transcriptRef.current += sc.outputTranscription.text;
+          setScript(transcriptRef.current);
+          changed = true;
+        }
+
+        for (const part of sc.modelTurn?.parts || []) {
+          const data = part.inlineData?.data;
+          if (!data) continue;
+          const bytes = base64ToUint8Array(data);
+          const pcm = new Int16Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 2));
+          const copy = new Int16Array(pcm);
+          chunksRef.current.push(copy);
+          detectorRef.current?.push(copy);
+          changed = true;
+
+          const buffer = pcmChunkToBuffer(ctx, copy);
+          const now = ctx.currentTime;
+          if (startAtRef.current === null) {
+            startAtRef.current = now + 0.05;
+            nextStartRef.current = startAtRef.current;
           }
-
-          const serverContent = msg.serverContent;
-          if (!serverContent) return;
-
-          // Capture transcription for script handoff
-          if (serverContent.outputTranscription?.text) {
-            transcriptRef.current += serverContent.outputTranscription.text;
+          if (nextStartRef.current < now) {
+            // Underrun: shift the clock so text stays aligned with what is heard
+            startAtRef.current += now - nextStartRef.current;
+            nextStartRef.current = now;
           }
-
-          // Play audio chunks as they arrive
-          const audioPart = serverContent.modelTurn?.parts?.find((p: any) => p.inlineData?.data);
-          const base64Audio = audioPart?.inlineData?.data;
-          if (base64Audio && outputContextRef.current) {
-            const outCtx = outputContextRef.current;
-            if (outCtx.state === 'suspended') {
-              try { await outCtx.resume(); } catch {}
+          const src = ctx.createBufferSource();
+          src.buffer = buffer;
+          src.connect(gain);
+          src.start(nextStartRef.current);
+          nextStartRef.current += buffer.duration;
+          sourcesRef.current.add(src);
+          src.onended = () => {
+            sourcesRef.current.delete(src);
+            if (sourcesRef.current.size === 0 && !wsRef.current) {
+              setIsPlaying(false);
+              stopClock();
+              setActiveSentence(-1);
+              updateMediaSession('none');
             }
+          };
+          if (modeRef.current === 'listen' && ctx.state === 'running') {
             setIsPlaying(true);
-            try {
-              const audioData = base64ToUint8Array(base64Audio);
-              const audioBuffer = await decodeAudioData(audioData, outCtx, 24000, 1);
-              const currentTime = outCtx.currentTime;
-              if (nextStartTimeRef.current < currentTime) nextStartTimeRef.current = currentTime;
-
-              const source = outCtx.createBufferSource();
-              source.buffer = audioBuffer;
-              source.connect(outCtx.destination);
-              source.start(nextStartTimeRef.current);
-              nextStartTimeRef.current += audioBuffer.duration;
-
-              scheduledSourcesRef.current.add(source);
-              source.onended = () => {
-                scheduledSourcesRef.current.delete(source);
-                if (scheduledSourcesRef.current.size === 0) setIsPlaying(false);
-              };
-            } catch (e) {
-              console.error('[narration] Decode/play error:', e);
-            }
+            startClock();
+            updateMediaSession('playing');
           }
+        }
 
-          // Turn complete → save transcript and close
-          if (serverContent.turnComplete) {
-            if (transcriptRef.current) {
-              setScript(transcriptRef.current);
-            }
-            // Close WebSocket after narration is done (audio still plays from buffer)
-            if (wsRef.current) {
-              wsRef.current.close();
-              wsRef.current = null;
-            }
+        if (changed) realign(false);
+
+        if (sc.turnComplete) {
+          realign(true);
+          if (wsRef.current) {
+            try { wsRef.current.close(); } catch {}
+            wsRef.current = null;
           }
-        };
+          setStatus('finished');
+          const pcm = concat(chunksRef.current);
+          setDuration(pcm.length / SAMPLE_RATE);
+          finish({
+            pcm,
+            script: transcriptRef.current,
+            sentences: sentencesRef.current,
+            durationSec: pcm.length / SAMPLE_RATE,
+          });
+        }
+      };
 
-        ws.onclose = () => {
-          // Don't stop playback — audio buffers continue playing
-          wsRef.current = null;
-        };
+      ws.onclose = () => {
+        if (wsRef.current === ws) wsRef.current = null;
+      };
 
-        ws.onerror = (err) => {
-          console.error('[narration] WebSocket error:', err);
-          setIsGenerating(false);
-          reject(new Error('Narration connection failed'));
-        };
-      });
-    } catch (err) {
-      console.error('[narration] Failed:', err);
-      setIsGenerating(false);
-    }
-  }, [stop]);
+      ws.onerror = (err) => {
+        console.error('[narration] WebSocket error:', err);
+        setStatus('error');
+        finish(null);
+      };
+    });
+  }, [realign, startClock, stop, stopClock, updateMediaSession]);
 
-  return { isGenerating, isPlaying, script, generate, stop };
+  const backgrounded = useCallback(() => {
+    if (engineRef.current === 'live' && sharedCtx?.state === 'running') pause();
+  }, [pause]);
+
+  return {
+    status,
+    sourceKey,
+    isGenerating: status === 'connecting',
+    isPlaying,
+    isPaused,
+    script,
+    sentences,
+    activeSentence,
+    getPosition: currentPosition,
+    duration,
+    mode,
+    setMode,
+    generate,
+    pause,
+    resume,
+    replay,
+    playSaved,
+    stop,
+    backgrounded,
+  };
 };

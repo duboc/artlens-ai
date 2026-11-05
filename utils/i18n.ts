@@ -383,10 +383,156 @@ const translations: Record<string, Record<Language, string>> = {
     pt: 'Redefinir Preferências',
     es: 'Restablecer Preferencias',
   },
+
+  // Navigation
+  'nav.scan': { en: 'Scan', pt: 'Escanear', es: 'Escanear' },
+  'nav.missions': { en: 'Missions', pt: 'Missões', es: 'Misiones' },
+  'nav.ranking': { en: 'Ranking', pt: 'Ranking', es: 'Ranking' },
+  'nav.me': { en: 'Profile', pt: 'Perfil', es: 'Perfil' },
+  'points.unit': { en: 'pts', pt: 'pts', es: 'pts' },
+  'points.label': { en: '{points} points', pt: '{points} pontos', es: '{points} puntos' },
+  'common.loading': { en: 'Loading…', pt: 'Carregando…', es: 'Cargando…' },
+  'common.retry': { en: 'Try again', pt: 'Tentar de novo', es: 'Reintentar' },
+  'common.error': { en: 'Could not load. Check your connection.', pt: 'Não foi possível carregar. Verifique sua conexão.', es: 'No se pudo cargar. Revisa tu conexión.' },
+  'common.close': { en: 'Close', pt: 'Fechar', es: 'Cerrar' },
+
+  // Missions
+  'missions.title': { en: 'Missions', pt: 'Missões', es: 'Misiones' },
+  'missions.summary': {
+    en: '{done} of {total} completed · {points} points',
+    pt: '{done} de {total} concluídas · {points} pontos',
+    es: '{done} de {total} completadas · {points} puntos',
+  },
+  'missions.intro': {
+    en: 'Scan artworks to complete missions. One artwork can complete several at once.',
+    pt: 'Escaneie obras para cumprir missões. Uma obra pode cumprir várias de uma vez.',
+    es: 'Escanea obras para cumplir misiones. Una obra puede cumplir varias a la vez.',
+  },
+  'missions.completedWith': { en: 'Completed with', pt: 'Concluída com', es: 'Completada con' },
+  'missions.statusDone': { en: 'Completed', pt: 'Concluída', es: 'Completada' },
+  'missions.statusOpen': { en: 'Not completed yet', pt: 'Ainda não concluída', es: 'Aún sin completar' },
+  'missions.scoring': {
+    en: 'Every new artwork +{artwork} pts · each quiz answer +{quiz} pts',
+    pt: 'Cada obra nova +{artwork} pts · cada resposta certa no quiz +{quiz} pts',
+    es: 'Cada obra nueva +{artwork} pts · cada acierto en el quiz +{quiz} pts',
+  },
+
+  // Ranking
+  'ranking.title': { en: 'Ranking', pt: 'Ranking', es: 'Ranking' },
+  'ranking.yourPosition': {
+    en: 'You are #{rank} of {total}',
+    pt: 'Você está em {rank}º de {total}',
+    es: 'Estás en el puesto {rank} de {total}',
+  },
+  'ranking.notYet': {
+    en: 'Scan your first artwork to join the ranking.',
+    pt: 'Escaneie sua primeira obra para entrar no ranking.',
+    es: 'Escanea tu primera obra para entrar en el ranking.',
+  },
+  'ranking.empty': {
+    en: 'Nobody has scored yet. Be the first.',
+    pt: 'Ninguém pontuou ainda. Seja o primeiro.',
+    es: 'Nadie ha puntuado todavía. Sé el primero.',
+  },
+  'ranking.missionsCount': { en: '{n} missions', pt: '{n} missões', es: '{n} misiones' },
+  'ranking.missionsCountOne': { en: '1 mission', pt: '1 missão', es: '1 misión' },
+  'ranking.you': { en: 'you', pt: 'você', es: 'tú' },
+  'ranking.refresh': { en: 'Refresh', pt: 'Atualizar', es: 'Actualizar' },
+
+  // Profile
+  'me.title': { en: 'Profile', pt: 'Perfil', es: 'Perfil' },
+  'me.history': { en: 'Scanned artworks', pt: 'Obras escaneadas', es: 'Obras escaneadas' },
+  'me.gallery': { en: 'My portraits', pt: 'Meus retratos', es: 'Mis retratos' },
+  'me.guide': { en: 'Guide', pt: 'Guia', es: 'Guía' },
+
+  // Awards toast
+  'awards.newArtwork': { en: 'New artwork', pt: 'Obra nova', es: 'Obra nueva' },
+  'awards.mission': { en: 'Mission complete', pt: 'Missão cumprida', es: 'Misión cumplida' },
+  'awards.viewMissions': { en: 'View missions', pt: 'Ver missões', es: 'Ver misiones' },
+
+  // Quiz
+  'quiz.cta': { en: 'Quiz: 3 questions', pt: 'Quiz: 3 perguntas', es: 'Quiz: 3 preguntas' },
+  'quiz.ctaPoints': { en: 'up to {points} pts', pt: 'até {points} pts', es: 'hasta {points} pts' },
+  'quiz.ctaDone': { en: 'Quiz done · review answers', pt: 'Quiz feito · rever respostas', es: 'Quiz hecho · ver respuestas' },
+  'quiz.progress': { en: 'Question {n} of {total}', pt: 'Pergunta {n} de {total}', es: 'Pregunta {n} de {total}' },
+  'quiz.correct': { en: 'Correct', pt: 'Certo', es: 'Correcto' },
+  'quiz.wrong': { en: 'Not quite', pt: 'Não foi dessa vez', es: 'Esta vez no' },
+  'quiz.next': { en: 'Next question', pt: 'Próxima pergunta', es: 'Siguiente pregunta' },
+  'quiz.finish': { en: 'See result', pt: 'Ver resultado', es: 'Ver resultado' },
+  'quiz.result': {
+    en: '{correct} of {total} correct · +{points} pts',
+    pt: '{correct} de {total} certas · +{points} pts',
+    es: '{correct} de {total} correctas · +{points} pts',
+  },
+  'quiz.perfect': { en: 'Includes the perfect-score bonus.', pt: 'Inclui o bônus por gabaritar.', es: 'Incluye el bonus por pleno.' },
+  'quiz.back': { en: 'Back to the artwork', pt: 'Voltar à obra', es: 'Volver a la obra' },
+  'quiz.loading': { en: 'Writing your questions…', pt: 'Preparando suas perguntas…', es: 'Preparando tus preguntas…' },
+  'quiz.saving': { en: 'Saving…', pt: 'Salvando…', es: 'Guardando…' },
+  'quiz.unavailable': {
+    en: 'The quiz is available once the scan is saved.',
+    pt: 'O quiz fica disponível quando o scan for salvo.',
+    es: 'El quiz estará disponible cuando se guarde el escaneo.',
+  },
+
+  // How the AI thought
+  'ai.title': { en: 'How the AI thought', pt: 'Como a IA pensou', es: 'Cómo pensó la IA' },
+  'ai.summary': {
+    en: 'Gemini looked at your photo, proposed an artwork and checked it with Google Search before answering.',
+    pt: 'O Gemini olhou sua foto, propôs uma obra e conferiu com buscas no Google antes de responder.',
+    es: 'Gemini miró tu foto, propuso una obra y la comprobó con búsquedas en Google antes de responder.',
+  },
+  'ai.model': { en: 'Model', pt: 'Modelo', es: 'Modelo' },
+  'ai.fallback': { en: 'backup model', pt: 'modelo reserva', es: 'modelo de reserva' },
+  'ai.time': { en: 'Response time', pt: 'Tempo de resposta', es: 'Tiempo de respuesta' },
+  'ai.thinking': { en: 'Reasoning level', pt: 'Nível de raciocínio', es: 'Nivel de razonamiento' },
+  'ai.confidence': { en: 'Confidence', pt: 'Confiança', es: 'Confianza' },
+  'ai.conf.high': { en: 'High', pt: 'Alta', es: 'Alta' },
+  'ai.conf.medium': { en: 'Medium', pt: 'Média', es: 'Media' },
+  'ai.conf.low': { en: 'Low', pt: 'Baixa', es: 'Baja' },
+  'ai.searches': { en: 'Google searches', pt: 'Buscas no Google', es: 'Búsquedas en Google' },
+  'ai.noSearches': {
+    en: 'No search this time: it answered from the image and what it already knew.',
+    pt: 'Sem buscas desta vez: respondeu pela imagem e pelo que já sabia.',
+    es: 'Sin búsquedas esta vez: respondió con la imagen y lo que ya sabía.',
+  },
+  'ai.context': { en: 'Context given', pt: 'Contexto fornecido', es: 'Contexto proporcionado' },
+  'ai.contextValue': { en: 'Museum profile: {museum}', pt: 'Perfil do museu: {museum}', es: 'Perfil del museo: {museum}' },
+  'ai.unavailable': { en: 'Not recorded for this scan.', pt: 'Não registrado neste scan.', es: 'No registrado en este escaneo.' },
+
+  // Result sheet + narration
+  'sheet.close': { en: 'Close', pt: 'Fechar', es: 'Cerrar' },
+  'sheet.position': { en: 'Scan {n} of {total}', pt: 'Scan {n} de {total}', es: 'Escaneo {n} de {total}' },
+  'sheet.swipeHint': { en: 'Swipe sideways for earlier scans', pt: 'Deslize para os lados para ver scans anteriores', es: 'Desliza a los lados para ver escaneos anteriores' },
+  'narration.title': { en: 'Narration', pt: 'Narração', es: 'Narración' },
+  'narration.preparing': { en: 'Your guide is getting ready…', pt: 'Seu guia está se preparando…', es: 'Tu guía se está preparando…' },
+  'narration.pause': { en: 'Pause narration', pt: 'Pausar narração', es: 'Pausar narración' },
+  'narration.resume': { en: 'Resume narration', pt: 'Retomar narração', es: 'Reanudar narración' },
+  'narration.replay': { en: 'Listen again', pt: 'Ouvir de novo', es: 'Escuchar de nuevo' },
+  'narration.play': { en: 'Play narration', pt: 'Tocar narração', es: 'Reproducir narración' },
+  'narration.listen': { en: 'Listen', pt: 'Ouvir', es: 'Escuchar' },
+  'narration.readOnly': { en: 'Read only', pt: 'Só ler', es: 'Solo leer' },
+  'narration.mode': { en: 'How to follow the guide', pt: 'Como acompanhar o guia', es: 'Cómo seguir al guía' },
+  'narration.none': { en: 'No narration was saved for this scan.', pt: 'Nenhuma narração foi salva neste scan.', es: 'No se guardó narración en este escaneo.' },
+  'install.title': { en: 'Install the app', pt: 'Instalar o app', es: 'Instalar la app' },
+  'install.ios': {
+    en: 'In Safari, tap Share, then "Add to Home Screen" to open ArtLens full screen.',
+    pt: 'No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início" para abrir o ArtLens em tela cheia.',
+    es: 'En Safari, toca Compartir y luego "Añadir a pantalla de inicio" para abrir ArtLens a pantalla completa.',
+  },
+  'install.other': {
+    en: 'Use your browser menu and choose "Install app" or "Add to Home screen".',
+    pt: 'No menu do navegador, escolha "Instalar app" ou "Adicionar à tela inicial".',
+    es: 'En el menú del navegador, elige "Instalar app" o "Añadir a pantalla de inicio".',
+  },
 };
 
 export function t(key: string, language: Language): string {
   const entry = translations[key];
   if (!entry) return key;
   return entry[language] || entry['en'] || key;
+}
+
+/** t() with {placeholder} substitution. */
+export function tf(key: string, language: Language, vars: Record<string, string | number>): string {
+  return t(key, language).replace(/\{(\w+)\}/g, (match, name) => (name in vars ? String(vars[name]) : match));
 }

@@ -8,10 +8,11 @@ interface HUDOverlayProps {
   onUpload: (file: File) => void;
   hasResult: boolean;
   language: Language;
-  onHistoryClick: () => void;
-  historyCount: number;
-  onSettingsClick: () => void;
-  onGalleryClick?: () => void;
+  /** Visitor's game points; null while unknown (hides the pill). */
+  points: number | null;
+  onPointsClick: () => void;
+  /** Space reserved at the bottom for the tab bar, in px. */
+  bottomInset?: number;
   children: React.ReactNode;
 }
 
@@ -21,10 +22,9 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
   onUpload,
   hasResult,
   language,
-  onHistoryClick,
-  historyCount,
-  onSettingsClick,
-  onGalleryClick,
+  points,
+  onPointsClick,
+  bottomInset = 0,
   children
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -51,38 +51,7 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
     <div className="absolute inset-0 z-10 pointer-events-none flex flex-col justify-between overflow-hidden h-dvh">
 
       {/* Top Bar */}
-      <div className="w-full pt-safe-top mt-4 px-5 flex items-start justify-between z-20 pointer-events-auto">
-
-        <div className="flex gap-2">
-          {/* History Button */}
-          <button
-            onClick={onHistoryClick}
-            className="relative p-3 rounded-full warm-glass text-[var(--text)] hover:border-primary/30 transition-all duration-300 active:scale-95"
-            aria-label="History"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            {historyCount > 0 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary text-onPrimary text-[10px] font-mono font-bold rounded-full flex items-center justify-center">
-                {historyCount > 9 ? '9+' : historyCount}
-              </span>
-            )}
-          </button>
-
-          {/* Gallery Button */}
-          {onGalleryClick && (
-            <button
-              onClick={onGalleryClick}
-              className="p-3 rounded-full warm-glass text-[var(--text)] hover:border-primary/30 transition-all duration-300 active:scale-95"
-              aria-label="Gallery"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
-              </svg>
-            </button>
-          )}
-        </div>
+      <div className="w-full pt-safe-top mt-4 px-5 flex items-center justify-between z-20 pointer-events-auto">
 
         {/* App Badge */}
         <div className={`warm-glass px-4 py-1.5 rounded-full flex items-center gap-2 transition-all duration-500 ${hasResult ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
@@ -95,17 +64,18 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
           <span className="text-xs font-serif text-[var(--text)] tracking-wide">AI Academy</span>
         </div>
 
-        {/* Settings Gear */}
-        <button
-          onClick={onSettingsClick}
-          className="p-3 rounded-full warm-glass text-secondary hover:text-primary hover:border-primary/30 transition-all duration-300 active:scale-95"
-          aria-label="Settings"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        </button>
+        {/* Points — opens Missions */}
+        {points !== null && (
+          <button
+            type="button"
+            onClick={onPointsClick}
+            className="warm-glass h-11 px-4 rounded-full flex items-center gap-1.5 text-[var(--text)] active:scale-95 transition-transform"
+            aria-label={`${points} ${t('points.unit', language)} · ${t('nav.missions', language)}`}
+          >
+            <span className="font-mono tabular text-base">{points}</span>
+            <span className="text-xs text-secondary">{t('points.unit', language)}</span>
+          </button>
+        )}
       </div>
 
       {/* Main Viewfinder Area */}
@@ -147,13 +117,13 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
       <div className="relative w-full h-full z-30 pointer-events-none">
 
         {/* Result Card Container */}
-        <div className="absolute inset-x-0 bottom-0 flex flex-col justify-end p-4 pb-safe-bottom">
+        <div className="absolute inset-x-0 bottom-0 flex flex-col justify-end p-4 pb-safe-bottom" style={{ bottom: bottomInset }}>
             {children}
         </div>
 
         {/* Shutter & Upload Buttons */}
         {!hasResult && (
-          <div className="absolute bottom-12 left-0 right-0 flex items-center justify-center pb-safe-bottom pointer-events-auto transition-all duration-300 transform">
+          <div className="absolute left-0 right-0 flex items-center justify-center pb-safe-bottom pointer-events-auto transition-all duration-300 transform" style={{ bottom: bottomInset + 48 }}>
 
             {/* Upload Input */}
             <input

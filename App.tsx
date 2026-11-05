@@ -1,18 +1,30 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, startTransition } from 'react';
+import { flushSync } from 'react-dom';
 import { CameraFeed } from './components/CameraFeed';
 import { HUDOverlay } from './components/HUDOverlay';
-import { AnalysisResultCard } from './components/AnalysisResultCard';
+import { ResultSheet } from './components/result/ResultSheet';
+import type { SheetPage } from './components/result/ScanPage';
 import { HistoryDrawer } from './components/HistoryDrawer';
 import { LanguageSelector } from './components/LanguageSelector';
 import { OnboardingForm } from './components/OnboardingForm';
 import { ChatWindow } from './components/ChatWindow';
 import { GenerateModal } from './components/GenerateModal';
 import { Gallery } from './components/Gallery';
+import { BottomNav, Tab, BOTTOM_NAV_HEIGHT } from './components/game/BottomNav';
+import { MissionsPanel } from './components/game/MissionsPanel';
+import { RankingPanel } from './components/game/RankingPanel';
+import { ProfilePanel } from './components/game/ProfilePanel';
+import { AwardToast } from './components/game/AwardToast';
+import { fetchMissions, awardScan, MissionsState } from './services/gameApi';
+import { getMuseum } from './museums';
 import { identifyArtwork, getDeepArtworkAnalysis } from './services/geminiService';
-import { useNarration } from './hooks/useNarration';
+import { unlockAudio, NarrationRecording } from './hooks/useNarration';
+import { useNarrationActions } from './hooks/NarrationProvider';
+import { encodeWav } from './utils/narrationTimeline';
+import { createArtworkShareCard, shareOrDownload } from './utils/shareCard';
 import { useWakeLock } from './hooks/useWakeLock';
 import { getUserId, setUserId, apiPost, apiGet, apiPatch, recoverSession } from './services/apiClient';
-import { IdentifyResponse, HistoryItem, Language, UserContext, Persona } from './types';
+import { IdentifyResponse, HistoryItem, Language, UserContext, Persona, ScanAwards } from './types';
 import { t } from './utils/i18n';
 
 const STORAGE_KEYS = {
@@ -36,13 +48,23 @@ const App: React.FC = () => {
     return parsed;
   });
 
-  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  // Game layer: tabs, points, awards
+  const [tab, setTab] = useState<Tab>('scan');
+  const [points, setPoints] = useState<number | null>(null);
+  const [openMissions, setOpenMissions] = useState<number | undefined>(undefined);
+  const [gameRefreshKey, setGameRefreshKey] = useState(0);
+  const [awards, setAwards] = useState<ScanAwards | null>(null);
+  const [isImmersive, setIsImmersive] = useState(false);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isDeepAnalyzing, setIsDeepAnalyzing] = useState(false);
   const [result, setResult] = useState<IdentifyResponse | null>(null);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [currentScanId, setCurrentScanId] = useState<string | null>(null);
+  /** 'current' for a fresh scan, or the history id when a past scan was opened. */
+  const [sheetKey, setSheetKey] = useState<string>('current');
+  /** Page of the result sheet in view; the staged photo above the sheet follows it. */
+  const [activePage, setActivePage] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   // Chat State integration
@@ -58,21 +80,21 @@ const App: React.FC = () => {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
 
   // Narration (TTS)
-  const narration = useNarration();
+  // Stable controls only: caption updates re-render the narration panel, not the app
+  const narration = useNarrationActions();
 
   // Keep screen awake during museum use
   useWakeLock();
 
-  // Stop narration when app goes to background
+  // Screen locked / app switched: saved audio keeps playing with lock-screen controls,
+  // the live stream pauses (resumable)
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.hidden) {
-        narration.stop();
-      }
+      if (document.hidden) narration.backgrounded();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [narration.stop]);
+  }, [narration]);
 
   // Capture flash
   const [showFlash, setShowFlash] = useState(false);
@@ -119,6 +141,20 @@ const App: React.FC = () => {
     }
   }, [userContext?.email, loadHistory]);
 
+  const applyMissionsState = useCallback((state: MissionsState) => {
+    setPoints(state.points);
+    setOpenMissions(state.missions.filter((m) => !m.completed).length);
+  }, []);
+
+  // Load points / open missions once the visitor is known
+  useEffect(() => {
+    if (userContext?.email && getUserId()) {
+      fetchMissions().then(applyMissionsState).catch(() => { /* panel shows its own error */ });
+    }
+  }, [userContext?.email, gameRefreshKey, applyMissionsState]);
+
+  const dismissAwards = useCallback(() => setAwards(null), []);
+
   // Back navigation handlers
   const handleBackToLanguage = () => {
     setLanguage(null);
@@ -129,7 +165,8 @@ const App: React.FC = () => {
     setUserContext(null);
     setResult(null);
     setCurrentImage(null);
-    setShowSettingsMenu(false);
+    setTab('scan');
+    setPoints(null);
     localStorage.removeItem(STORAGE_KEYS.userContext);
     localStorage.removeItem('artlens_userId');
   };
@@ -147,6 +184,16 @@ const App: React.FC = () => {
     if (userId) {
       apiPatch(`/api/users/${userId}`, { persona }).catch(err => {
         console.error('Failed to update persona on backend:', err);
+      });
+    }
+  };
+
+  const handleLanguageChange = (lang: Language) => {
+    setLanguage(lang);
+    const userId = getUserId();
+    if (userId) {
+      apiPatch(`/api/users/${userId}`, { language: lang }).catch(err => {
+        console.error('Failed to update language on backend:', err);
       });
     }
   };
@@ -177,27 +224,36 @@ const App: React.FC = () => {
       imageUrl: userId ? `/api/images/users/${userId}/scans/${scanId}.jpg` : '',
       data: data
     };
-    setHistory(prev => [newItem, ...prev]);
+    startTransition(() => setHistory(prev => [newItem, ...prev]));
   };
 
   const clearHistory = () => {
     setHistory([]);
   };
 
-  const executeDeepAnalysis = async (rawBase64: string, initialResult: IdentifyResponse, lang: Language, scanId?: string) => {
+  const executeDeepAnalysis = async (
+    rawBase64: string,
+    initialResult: IdentifyResponse,
+    lang: Language,
+    scanIdPromise: Promise<string | undefined>,
+  ) => {
     setIsDeepAnalyzing(true);
     try {
         const deepData = await getDeepArtworkAnalysis(rawBase64, initialResult, lang);
+        const scanId = await scanIdPromise;
 
         const updatedResult = { ...initialResult, deepAnalysis: deepData };
-        setResult(updatedResult);
-
-        setHistory(prev => prev.map(item => {
-            if (item.id === scanId) {
-                return { ...item, data: updatedResult };
-            }
-            return item;
-        }));
+        // Background data: an interruptible render that yields to a sheet drag in progress.
+        // Only update the open result if it is still this scan (never reopen a closed sheet).
+        startTransition(() => {
+          setResult((prev) => (prev === initialResult ? updatedResult : prev));
+          setHistory(prev => prev.map(item => {
+              if (item.id === scanId) {
+                  return { ...item, data: updatedResult };
+              }
+              return item;
+          }));
+        });
 
         // Persist deep analysis to backend
         if (scanId && getUserId()) {
@@ -212,6 +268,80 @@ const App: React.FC = () => {
     }
   };
 
+  /** Score a saved scan and show what was earned (never blocks the visitor). */
+  const requestAwards = (scanId: string) => {
+    awardScan(scanId)
+      .then((earned) => startTransition(() => {
+        setPoints(earned.totalPoints);
+        if (earned.points > 0) setAwards(earned);
+        if (earned.missions.length) {
+          setOpenMissions((n) => (n === undefined ? n : Math.max(0, n - earned.missions.length)));
+        }
+      }))
+      .catch((err) => console.error('Failed to award scan:', err));
+  };
+
+  const uploadScanImage = async (imageDataUrl: string, scanId: string) => {
+    try {
+      const blob = await fetch(imageDataUrl).then(r => r.blob());
+      const formData = new FormData();
+      formData.append('file', blob, 'scan.jpg');
+      formData.append('type', 'scan');
+      formData.append('scanId', scanId);
+      await fetch('/api/images/upload', {
+        method: 'POST',
+        headers: { 'X-User-Id': getUserId()! },
+        body: formData,
+      });
+    } catch (err) {
+      console.error('Scan image upload failed:', err);
+    }
+  };
+
+  /** Save the intro narration (WAV + text + timings) with its scan, and keep a local copy for swiping. */
+  const saveNarration = async (recording: NarrationRecording, scanId: string) => {
+    try {
+      const form = new FormData();
+      form.append('audio', new Blob([encodeWav(recording.pcm)], { type: 'audio/wav' }), 'narration.wav');
+      form.append('meta', JSON.stringify({
+        script: recording.script,
+        sentences: recording.sentences.map((s) => ({ ...s, start: Number.isFinite(s.start) ? s.start : 0 })),
+        durationSec: recording.durationSec,
+      }));
+      const res = await fetch(`/api/scans/${scanId}/narration`, {
+        method: 'POST',
+        headers: { 'X-User-Id': getUserId()! },
+        body: form,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { audioUrl } = await res.json();
+      const narrationData = {
+        audioUrl,
+        script: recording.script,
+        sentences: recording.sentences.map((s) => ({ ...s, start: Number.isFinite(s.start) ? s.start : 0 })),
+        durationSec: recording.durationSec,
+      };
+      startTransition(() => setHistory((prev) => prev.map((h) => (h.id === scanId ? { ...h, data: { ...h.data, narration: narrationData } } : h))));
+    } catch (err) {
+      console.error('Failed to save narration:', err);
+    }
+  };
+
+  /** Show a result, morphing the full-screen camera frame into the photo above the sheet where supported. */
+  const presentResult = (response: IdentifyResponse) => {
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
+    // The sheet always rises with its spring; the view transition morphs the photo alongside it
+    setActivePage(0);
+    if (doc.startViewTransition && !reduceMotion) {
+      doc.startViewTransition(() => {
+        flushSync(() => setResult(response));
+      });
+    } else {
+      setResult(response);
+    }
+  };
+
   const processImageAnalysis = async (imageDataUrl: string) => {
     if (isAnalyzing || !language) return;
 
@@ -223,52 +353,40 @@ const App: React.FC = () => {
     setResult(null);
     setCurrentImage(imageDataUrl);
     setCurrentScanId(null);
+    setSheetKey('current');
 
     try {
       const rawBase64 = imageDataUrl.split(',')[1];
       const response = await identifyArtwork(rawBase64, language);
 
-      setResult(response);
+      presentResult(response);
 
-      // Persist scan to backend and add to history
-      let scanId: string | undefined;
-      if (getUserId()) {
-        try {
-          const scanResult = await apiPost<{ scanId: string }>('/api/scans', {
-            artData: response,
-            language,
-          });
-          scanId = scanResult.scanId;
-          setCurrentScanId(scanId);
+      // Save the scan; deep analysis, narration, upload and scoring all run in parallel
+      const scanIdPromise: Promise<string | undefined> = getUserId()
+        ? apiPost<{ scanId: string }>('/api/scans', { artData: response, language, museumId: getMuseum().id })
+            .then((r) => r.scanId)
+            .catch((err) => { console.error('Failed to persist scan:', err); return undefined; })
+        : Promise.resolve(undefined);
 
-          // Upload captured image
-          try {
-            const blob = await fetch(imageDataUrl).then(r => r.blob());
-            const formData = new FormData();
-            formData.append('file', blob, 'scan.jpg');
-            formData.append('type', 'scan');
-            formData.append('scanId', scanId);
-            await fetch('/api/images/upload', {
-              method: 'POST',
-              headers: { 'X-User-Id': getUserId()! },
-              body: formData,
-            });
-          } catch (err) {
-            console.error('Scan image upload failed:', err);
-          }
+      executeDeepAnalysis(rawBase64, response, language, scanIdPromise);
 
-          // Add to history only after the upload so the thumbnail URL resolves
-          addToHistory(scanId, response);
-        } catch (err) {
-          console.error('Failed to persist scan:', err);
-        }
+      // Narration with live captions (parallel, non-blocking); saved with the scan when done
+      if (userContext) {
+        Promise.all([
+          narration.generate(response, userContext.persona, language, userContext.name),
+          scanIdPromise,
+        ]).then(([recording, id]) => {
+          if (recording && id) saveNarration(recording, id);
+        });
       }
 
-      executeDeepAnalysis(rawBase64, response, language, scanId);
-
-      // Generate TTS narration (parallel, non-blocking)
-      if (userContext) {
-        narration.generate(response, userContext.persona, language, userContext.name);
+      const scanId = await scanIdPromise;
+      if (scanId) {
+        startTransition(() => setCurrentScanId(scanId));
+        requestAwards(scanId);
+        await uploadScanImage(imageDataUrl, scanId);
+        // Add to history only after the upload so the thumbnail URL resolves
+        addToHistory(scanId, response);
       }
 
     } catch (err: any) {
@@ -281,6 +399,7 @@ const App: React.FC = () => {
   };
 
   const handleScan = async () => {
+    unlockAudio();
     try {
       const fullDataUrl = captureFrame();
       if (!fullDataUrl) {
@@ -297,6 +416,7 @@ const App: React.FC = () => {
   };
 
   const handleUpload = async (file: File) => {
+    unlockAudio();
     const reader = new FileReader();
     reader.onload = async (e) => {
         const fullDataUrl = e.target?.result as string;
@@ -322,9 +442,21 @@ const App: React.FC = () => {
 
   const handleSelectHistory = (item: HistoryItem) => {
       setCurrentImage(item.imageUrl);
+      setSheetKey(item.id);
+      setActivePage(0);
       setResult(item.data);
       setCurrentScanId(item.id);
       setIsHistoryOpen(false);
+      setTab('scan');
+  };
+
+  const handleShare = async (page: SheetPage) => {
+    if (!page.imageUrl) return;
+    try {
+      const blob = await createArtworkShareCard(page.imageUrl, page.data);
+      await shareOrDownload(blob, `artlens-${page.data.title.replace(/[^a-zA-Z0-9]/g, '-')}.png`, page.data.title,
+        `${page.data.title} by ${page.data.artist} (${page.data.year}) — AI Leadership Academy`);
+    } catch { /* cancelled */ }
   };
 
   // 1. Language Selection
@@ -344,6 +476,16 @@ const App: React.FC = () => {
   }
 
   // 3. Main AR App
+  const showNav = !result && !showGenerateModal;
+
+  // Sheet pages: the open scan first, then earlier scans to swipe through
+  const sheetPages: SheetPage[] = result ? [
+    { key: sheetKey, data: result, imageUrl: currentImage, scanId: currentScanId },
+    ...history
+      .filter((h) => h.id !== currentScanId && h.id !== sheetKey)
+      .map((h) => ({ key: h.id, data: h.data, imageUrl: h.imageUrl, scanId: h.id })),
+  ] : [];
+
   return (
     <div className="relative w-full h-dvh bg-[var(--bg)] overflow-hidden">
       {/* Hidden canvas for image capture */}
@@ -355,19 +497,13 @@ const App: React.FC = () => {
       )}
 
       {/* Live Camera Layer */}
-      <CameraFeed videoRef={videoRef} frozenImage={currentImage} language={language} />
-
-      {/* Artwork Title Overlay — visible on frozen frame */}
-      {result && currentImage && (
-        <div className="absolute top-0 left-0 right-0 z-5 pt-safe pointer-events-none">
-          <div className="mt-20 px-6">
-            <div className="warm-glass rounded-2xl px-4 py-3 inline-block max-w-[80%]">
-              <h2 className="font-serif text-[var(--text)] text-base leading-tight">{result.title}</h2>
-              <p className="text-secondary text-xs mt-0.5">{result.artist} · {result.year}</p>
-            </div>
-          </div>
-        </div>
-      )}
+      <CameraFeed
+        videoRef={videoRef}
+        frozenImage={result ? sheetPages[activePage]?.imageUrl ?? currentImage : currentImage}
+        language={language}
+        transitionName="scan-photo"
+        staged={!!result}
+      />
 
       {/* History Drawer */}
       <HistoryDrawer
@@ -386,10 +522,9 @@ const App: React.FC = () => {
         onUpload={handleUpload}
         hasResult={!!result}
         language={language}
-        onHistoryClick={() => setIsHistoryOpen(true)}
-        historyCount={history.length}
-        onSettingsClick={() => setShowSettingsMenu(!showSettingsMenu)}
-        onGalleryClick={() => setIsGalleryOpen(true)}
+        points={points}
+        onPointsClick={() => setTab('missions')}
+        bottomInset={showNav ? BOTTOM_NAV_HEIGHT : 0}
       >
         {/* Error Notification */}
         {error && (
@@ -409,75 +544,80 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {result && (
-              <AnalysisResultCard
-                data={result}
-                language={language}
-                userContext={userContext}
-                scanId={currentScanId}
-                artworkImageUrl={currentImage}
-                onClose={handleReset}
-                isDeepAnalyzing={isDeepAnalyzing}
-                forcedChatOpen={forceChatOpen}
-                initialChatQuery={initialChatQuery}
-                onChatClose={() => {
-                    setForceChatOpen(false);
-                    setInitialChatQuery(null);
-                }}
-                onScanAnother={handleReset}
-                onPersonaChange={handlePersonaChange}
-                onGenerateMe={() => setShowGenerateModal(true)}
-                hasSelfie={!!userContext.selfieUrl}
-                narrationIsPlaying={narration.isPlaying}
-                narrationIsGenerating={narration.isGenerating}
-                narrationScript={narration.script}
-                onStopNarration={narration.stop}
-              />
-        )}
       </HUDOverlay>
 
-      {/* Settings Menu */}
-      {showSettingsMenu && userContext && language && (
-        <div className="absolute inset-0 z-[60]" onClick={() => setShowSettingsMenu(false)}>
-          <div className="absolute inset-0 bg-black/40" />
-          <div
-            className="absolute top-20 right-4 w-64 bg-[var(--surface)] border border-white/[0.1] rounded-2xl shadow-2xl overflow-hidden animate-fade-in"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-4 py-3 border-b border-white/[0.06]">
-              <p className="text-xs text-secondary/60 font-mono">{t('settings.loggedAs', language)}</p>
-              <p className="text-sm text-[var(--text)] font-medium truncate mt-0.5">{userContext.name}</p>
-              <p className="text-xs text-secondary/50 truncate">{userContext.email}</p>
-            </div>
-            <div className="px-4 py-3 border-b border-white/[0.06]">
-              <p className="text-xs text-secondary/60 font-mono mb-2">{t('settings.persona', language)}</p>
-              <div className="flex gap-2">
-                {(['guide', 'academic', 'blogger'] as const).map(p => (
-                  <button
-                    key={p}
-                    onClick={() => handlePersonaChange(p)}
-                    className={`flex-1 py-1.5 rounded-full text-xs font-medium transition-all duration-300
-                      ${userContext.persona === p
-                        ? 'bg-primary/15 text-primary border border-primary/30'
-                        : 'bg-[var(--surface-variant)] text-secondary border border-white/[0.06] hover:border-primary/20'
-                      }`}
-                  >
-                    {t(`result.${p === 'academic' ? 'curator' : p}`, language)}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="w-full px-4 py-3 text-left text-sm text-error/80 hover:bg-error/10 transition-colors flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              {t('settings.logout', language)}
-            </button>
-          </div>
-        </div>
+      {/* Result: gesture-driven sheet (medium / full), swipe sideways through earlier scans */}
+      {result && (
+        <ResultSheet
+          key={`${sheetKey}-${currentImage?.length ?? 0}`}
+          pages={sheetPages}
+          language={language}
+          userContext={userContext}
+          isDeepAnalyzing={isDeepAnalyzing}
+          hasSelfie={!!userContext.selfieUrl}
+          animateIn
+          onActiveChange={setActivePage}
+          toast={awards ? (
+            <AwardToast
+              inline
+              awards={awards}
+              language={language}
+              onDismiss={dismissAwards}
+              onViewMissions={() => { setAwards(null); handleReset(); setTab('missions'); }}
+            />
+          ) : null}
+          onClosed={handleReset}
+          onImmersiveChange={setIsImmersive}
+          onPointsChange={setPoints}
+          onPersonaChange={handlePersonaChange}
+          onGenerateMe={() => setShowGenerateModal(true)}
+          onShare={handleShare}
+        />
+      )}
+
+      {/* Game panels (camera keeps running underneath) */}
+      {tab === 'missions' && (
+        <MissionsPanel
+          language={language}
+          refreshKey={gameRefreshKey}
+          onLoaded={applyMissionsState}
+          onGoScan={() => setTab('scan')}
+        />
+      )}
+      {tab === 'ranking' && <RankingPanel language={language} refreshKey={gameRefreshKey} />}
+      {tab === 'me' && (
+        <ProfilePanel
+          language={language}
+          userContext={userContext}
+          points={points}
+          historyCount={history.length}
+          onLanguageChange={handleLanguageChange}
+          onPersonaChange={handlePersonaChange}
+          onOpenHistory={() => setIsHistoryOpen(true)}
+          onOpenGallery={() => setIsGalleryOpen(true)}
+          onLogout={handleLogout}
+        />
+      )}
+
+      {showNav && (
+        <BottomNav
+          active={tab}
+          language={language}
+          openMissions={openMissions}
+          onChange={(next) => {
+            setTab(next);
+            if (next !== 'scan') setGameRefreshKey((k) => k + 1);
+          }}
+        />
+      )}
+
+      {awards && !result && (
+        <AwardToast
+          awards={awards}
+          language={language}
+          onDismiss={dismissAwards}
+          onViewMissions={() => { setAwards(null); setTab('missions'); }}
+        />
       )}
 
       {/* Gallery */}

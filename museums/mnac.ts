@@ -36,4 +36,34 @@ export const mnac: MuseumProfile = {
         `How does the style of "${title}" compare to other movements represented here at MNAC? How does it fit into the broader art history on display?`,
     },
   ],
+  missions: [
+    {
+      id: 'romanesque',
+      title: { en: 'Pyrenean murals', pt: 'Murais dos Pireneus', es: 'Murales del Pirineo' },
+      hint: { en: 'Scan a Romanesque mural.', pt: 'Escaneie um mural românico.', es: 'Escanea un mural románico.' },
+      criterion: 'The artwork is a Romanesque mural painting.',
+      points: 120,
+    },
+    {
+      id: 'gothic',
+      title: { en: 'Golden altarpieces', pt: 'Retábulos dourados', es: 'Retablos dorados' },
+      hint: { en: 'Find a Gothic altarpiece.', pt: 'Procure um retábulo gótico.', es: 'Busca un retablo gótico.' },
+      criterion: 'The artwork is a Gothic painting or altarpiece.',
+      points: 100,
+    },
+    {
+      id: 'modernisme',
+      title: { en: 'Modernisme', pt: 'Modernismo catalão', es: 'Modernismo catalán' },
+      hint: { en: 'Scan a work of Catalan Modernisme.', pt: 'Escaneie uma obra do modernismo catalão.', es: 'Escanea una obra del modernismo catalán.' },
+      criterion: 'The artwork belongs to Catalan Modernisme (e.g. Ramon Casas, Santiago Rusiñol, Joaquim Mir, Antoni Gaudí).',
+      points: 100,
+    },
+    {
+      id: 'portrait',
+      title: { en: 'Face to face', pt: 'Cara a cara', es: 'Cara a cara' },
+      hint: { en: 'Scan a portrait.', pt: 'Escaneie um retrato.', es: 'Escanea un retrato.' },
+      criterion: 'The artwork is a portrait or self-portrait of a person.',
+      points: 100,
+    },
+  ],
 };

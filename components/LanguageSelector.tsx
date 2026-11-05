@@ -14,7 +14,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({ onSelect }) 
       <div className="flex-1 flex flex-col justify-center max-w-sm mx-auto w-full">
         {/* Title */}
         <div className="mb-10 opacity-0 animate-reveal flex flex-col items-center">
-          <h1 className="font-serif text-4xl text-shimmer mb-2 tracking-tight leading-none text-center">
+          <h1 className="font-serif text-4xl text-[var(--text)] mb-2 tracking-tight leading-none text-center">
             AI Leadership Academy
           </h1>
           <p className="text-secondary text-sm font-medium tracking-[0.2em] uppercase opacity-0 animate-reveal-delay-1 text-center">

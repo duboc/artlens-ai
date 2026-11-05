@@ -16,6 +16,20 @@ export interface MuseumTopic {
 }
 
 /**
+ * An individual challenge. A scan completes the mission when Gemini judges
+ * that the identified artwork satisfies `criterion` (evaluated server-side).
+ */
+export interface Mission {
+  id: string;
+  title: LocalizedText;
+  /** One-line hint shown to the visitor. */
+  hint: LocalizedText;
+  /** English rule for the model judging a scanned artwork. */
+  criterion: string;
+  points: number;
+}
+
+/**
  * Everything that makes the experience specific to one venue. Add a new file
  * in museums/ and register it in museums/index.ts to support another museum;
  * select it per deployment with MUSEUM_ID (or ?museum=<id> for testing).
@@ -37,4 +51,6 @@ export interface MuseumProfile {
   identifyHint?: string;
   /** Museum-specific chat topic chips. The first one is shown right after "About the artist". */
   topics: MuseumTopic[];
+  /** Individual challenges for the game layer (Missions tab). */
+  missions: Mission[];
 }
