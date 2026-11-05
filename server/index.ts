@@ -17,6 +17,7 @@ import scansRouter from './routes/scans.js';
 import chatsRouter from './routes/chats.js';
 import generateImageRouter from './routes/generateImage.js';
 import gameRouter from './routes/game.js';
+import narrationRouter from './routes/narration.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -66,6 +67,7 @@ app.use('/api/images', imagesRouter);
 app.use('/api/generate', authMiddleware, generateRouter);
 app.use('/api/scans', authMiddleware, scansRouter);
 app.use('/api/scans', authMiddleware, chatsRouter);
+app.use('/api/scans', authMiddleware, narrationRouter);
 app.use('/api/generate-image', authMiddleware, generateImageRouter);
 app.use('/api/game', authMiddleware, gameRouter);
 

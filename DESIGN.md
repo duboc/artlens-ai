@@ -84,11 +84,11 @@ Scale actually in use (12px floor — nothing smaller is allowed in new code):
 ## 5. Shape & elevation
 
 - **Radii**: `rounded-full` for every control (CTAs, segmented options, icon buttons, pills, nav badge);
-  `rounded-t-[2.5rem]` bottom sheet (and `rounded-b-[2.5rem]` when floating, non-immersive);
+  result sheet top corners 28px at the medium detent → 0 at full (edge-to-edge, like a native sheet);
   `rounded-2xl` toast + welcome language options; `rounded-xl` quiz options; `rounded-lg` meta badges.
-- **Layers (z)**: camera < HUD `z-10` < panels `z-30` < BottomNav `z-40` < AwardToast / LanguageSelector `z-50`.
-- **Glass only over the live camera**: HUD chips `.warm-glass` (surface @90% + 24px blur);
-  result sheet / minimized pill `bg-black/60–70 backdrop-blur-2xl border-white/[0.08]`.
+- **Layers (z)**: camera < HUD `z-10` < panels `z-30` < BottomNav `z-40` < ResultSheet / AwardToast / LanguageSelector `z-50`.
+- **No glass**: HUD chips over the camera use `.warm-glass`, now a near-opaque carbon surface
+  (`rgba(22,24,27,.92)`, no blur). The result sheet is opaque `--surface` with shadow `0 -6px 24px rgba(0,0,0,.45)`.
 - **Opaque everywhere else**: panels on `--bg`, nav and toast on `--surface`. Toast shadow
   `0 8px 24px rgba(0,0,0,.45)` (offset + blur — the model for any new shadow).
 
@@ -105,10 +105,29 @@ Scale actually in use (12px floor — nothing smaller is allowed in new code):
   selected `bg-primary/15 text-primary border-primary/40`, idle `bg-[var(--surface)] border-white/[0.08]`.
 - **Primary CTA**: `min-h-[48px] w-full rounded-full bg-primary-dark text-onPrimary text-sm font-medium`,
   `active:scale-[0.98]`. Secondary: outline pill `border-primary/30`. Tertiary: text button `text-primary`.
-- **Bottom sheet** (`AnalysisResultCard`): drag-handle button (48×4 bar) minimizes to a glass pill;
-  `max-h-[60vh]` scroll, expands to `h-[85vh]` for chat/quiz.
-- **AwardToast**: top, below status bar (+72px); big mono `+N` in blue, itemized lines with muted mono
-  points, optional "View missions" link; `role="status" aria-live="polite"`, auto-dismiss 6s.
+- **ResultSheet** (`components/result/ResultSheet.tsx`, physics in `components/sheet/sheetPhysics.ts`):
+  the post-scan surface. A full-height `role="dialog"` that follows the finger, with two detents
+  (medium = 50% of the viewport, full = 100%) plus close. Release projects the flick with the UIScrollView
+  deceleration rate (0.998), snaps to the nearest detent, and flicks over 500 px/s move one detent. It
+  rubber-bands above the top (c = 0.55) and settles with a critically damped spring (response 0.42 s).
+  Constants come from Apple WWDC18 "Designing Fluid Interfaces" and Android `BottomSheetBehavior`.
+  Header: 40×5 handle, "Scan n of N", 44px close. System back / edge swipe / Escape close chat or quiz
+  first, then the sheet (History API). Swiping sideways pages through earlier scans (scroll-snap pager).
+- **Photo stage** (`CameraFeed` `staged`): with a result open, the whole frozen photo fits above the
+  medium sheet (`.photo-stage`, Google Lens style) and follows the page being viewed. At full,
+  each page's own photo (`object-contain`, the whole artwork) slides into the sheet (`.sheet-hero`),
+  so the photo is never shown twice.
+- **NarrationPanel** (`components/result/NarrationPanel.tsx`): 48px primary round button (Play / Pause /
+  Resume / Listen again; a spinner + `aria-busy` while the guide gets ready) + 44px "Listen again" while
+  paused + a Listen / Read only radiogroup (44px radios, arrow keys, remembered in `localStorage`). Below
+  it: the narration text, 18px, `max-w-[60ch]`, `.selectable`; the spoken sentence gets
+  `aria-current="true"` + `bg-primary/25`; already-read text is `text/75`, upcoming text is `secondary`.
+  At medium the text is a window of 1–3 lines (whatever fits above the bottom edge) that scrolls to
+  follow the spoken sentence; at full the whole text shows.
+- **AwardToast**: while a result is open (`inline`) it is one 44px line in the sheet header's left slot
+  (mono `+N` in blue · what was earned · arrow to Missions). It causes no layout shift and never sits over the
+  title or the audio controls; "Scan n of N" returns when it dismisses. Otherwise it floats at the top, below the status bar (+72px). Big mono `+N` in blue, itemized
+  lines with muted mono points, optional "View missions" link; `role="status" aria-live="polite"`, auto-dismiss 6s.
 - **Quiz option**: idle → right (`border-success/60 bg-success/15` + check) / wrong (`error` + cross) /
   dim (others). Explanation + next CTA appear below; haptic via `navigator.vibrate`.
 - **AiTracePanel** ("How the AI thought"): disclosure row (`min-h-[52px]`, `aria-expanded`), latency in
@@ -116,10 +135,17 @@ Scale actually in use (12px floor — nothing smaller is allowed in new code):
 
 ## 7. Motion
 
-- **The one authored moment**: `.award-toast` — 0.55s `cubic-bezier(.16,1,.3,1)`, from −16px / 0.98 /
+- **The one authored celebratory moment**: `.award-toast` — 0.55s `cubic-bezier(.16,1,.3,1)`, from −16px / 0.98 /
   6px blur to rest. Don't add a second celebratory animation.
+- **Gesture physics (functional, not decorative)**: the ResultSheet spring and rubber-band above. While
+  the finger moves, only `transform` and the non-inherited `--sheet-full` (corner radius) change: no
+  layout, no React render per frame. On release the detent is written to `data-detent` directly (no React
+  render), and CSS follows it with `cubic-bezier(.32,.72,0,1)`: the hero photo slides in by `transform`
+  (320ms, compositor only) and the header picks up the safe-area padding (280ms).
+- **Photo morph**: on scan, the full-screen frozen frame morphs into the photo stage via the View
+  Transitions API (`scan-photo`, 420ms, same curve) while the sheet rises on its spring. Root crossfade is off.
 - **Instant**: tab panels mount with no transition. Quiz question swaps and disclosure content use
-  `animate-fade-in` (0.4s). Sheet height 500ms `cubic-bezier(.32,.72,0,1)`; minimized pill `slide-up`.
+  `animate-fade-in` (0.4s). Caption highlight: 200ms color transition.
 - **Functional loops only**: scan-line sweep while analyzing, refresh `animate-spin`, spinners.
 - **Feedback**: `active:scale-[0.98]` (pills `0.95`), color transitions 200–300ms.
 - **Reduced motion** (`index.html`): all animations/transitions collapse to 0.01ms, glass blur removed
@@ -140,12 +166,11 @@ Scale actually in use (12px floor — nothing smaller is allowed in new code):
 
 | Where | Exception | Retire toward |
 |---|---|---|
-| `index.html` `.text-shimmer` → `LanguageSelector` title | 4-color gradient text | Solid `--text` title; keep `.google-gradient` bar as the brand mark |
 | `LanguageSelector` "Museum Companion" | Uppercase tracked kicker | Sentence-case `text-secondary` subtitle |
-| `glowPulse` on HUD shutter, `.border-gold-glow` | Zero-offset blue halo | Static ring; no glow |
-| `.warm-glass` (HUD chips) | Blue-tinted 24px blur glass | Acceptable over camera; don't spread to opaque surfaces |
-| `AnalysisResultCard` Section / "Did you know" / insights | 12px mono uppercase kickers; tinted `primary/[0.08]` cards | Sentence-case headings + hairline sections |
-| `AnalysisResultCard` chat CTA | `bg-primary` + 14px white text (3.6:1) | `bg-primary-dark` |
-| `AnalysisResultCard` share/close (32px), minimized pill buttons (40px) | Under 44px target | `w-11 h-11` |
+| `glowPulse` on HUD shutter | Zero-offset blue halo | Static ring; no glow |
 | `HistoryDrawer`, `Gallery`, `ChatWindow` | `text-[10px]` | `text-xs` minimum |
 | Various | `secondary/30–70` text, "gold" comments (palette is blue now) | Full `secondary`; fix naming when touched |
+
+Retired in the native-sheet pass: the `.text-shimmer` gradient title (now a solid `--text` title over the
+`.google-gradient` bar), `.border-gold-glow`, the 24px blur on `.warm-glass`, and `AnalysisResultCard`
+with its kickers, tinted cards and sub-44px buttons (replaced by ResultSheet + ScanPage).

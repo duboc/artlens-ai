@@ -1,7 +1,9 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, startTransition } from 'react';
+import { flushSync } from 'react-dom';
 import { CameraFeed } from './components/CameraFeed';
 import { HUDOverlay } from './components/HUDOverlay';
-import { AnalysisResultCard } from './components/AnalysisResultCard';
+import { ResultSheet } from './components/result/ResultSheet';
+import type { SheetPage } from './components/result/ScanPage';
 import { HistoryDrawer } from './components/HistoryDrawer';
 import { LanguageSelector } from './components/LanguageSelector';
 import { OnboardingForm } from './components/OnboardingForm';
@@ -16,7 +18,10 @@ import { AwardToast } from './components/game/AwardToast';
 import { fetchMissions, awardScan, MissionsState } from './services/gameApi';
 import { getMuseum } from './museums';
 import { identifyArtwork, getDeepArtworkAnalysis } from './services/geminiService';
-import { useNarration } from './hooks/useNarration';
+import { unlockAudio, NarrationRecording } from './hooks/useNarration';
+import { useNarrationActions } from './hooks/NarrationProvider';
+import { encodeWav } from './utils/narrationTimeline';
+import { createArtworkShareCard, shareOrDownload } from './utils/shareCard';
 import { useWakeLock } from './hooks/useWakeLock';
 import { getUserId, setUserId, apiPost, apiGet, apiPatch, recoverSession } from './services/apiClient';
 import { IdentifyResponse, HistoryItem, Language, UserContext, Persona, ScanAwards } from './types';
@@ -56,6 +61,10 @@ const App: React.FC = () => {
   const [result, setResult] = useState<IdentifyResponse | null>(null);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
   const [currentScanId, setCurrentScanId] = useState<string | null>(null);
+  /** 'current' for a fresh scan, or the history id when a past scan was opened. */
+  const [sheetKey, setSheetKey] = useState<string>('current');
+  /** Page of the result sheet in view; the staged photo above the sheet follows it. */
+  const [activePage, setActivePage] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   // Chat State integration
@@ -71,21 +80,21 @@ const App: React.FC = () => {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
 
   // Narration (TTS)
-  const narration = useNarration();
+  // Stable controls only: caption updates re-render the narration panel, not the app
+  const narration = useNarrationActions();
 
   // Keep screen awake during museum use
   useWakeLock();
 
-  // Stop narration when app goes to background
+  // Screen locked / app switched: saved audio keeps playing with lock-screen controls,
+  // the live stream pauses (resumable)
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.hidden) {
-        narration.stop();
-      }
+      if (document.hidden) narration.backgrounded();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [narration.stop]);
+  }, [narration]);
 
   // Capture flash
   const [showFlash, setShowFlash] = useState(false);
@@ -215,7 +224,7 @@ const App: React.FC = () => {
       imageUrl: userId ? `/api/images/users/${userId}/scans/${scanId}.jpg` : '',
       data: data
     };
-    setHistory(prev => [newItem, ...prev]);
+    startTransition(() => setHistory(prev => [newItem, ...prev]));
   };
 
   const clearHistory = () => {
@@ -234,14 +243,17 @@ const App: React.FC = () => {
         const scanId = await scanIdPromise;
 
         const updatedResult = { ...initialResult, deepAnalysis: deepData };
-        setResult(updatedResult);
-
-        setHistory(prev => prev.map(item => {
-            if (item.id === scanId) {
-                return { ...item, data: updatedResult };
-            }
-            return item;
-        }));
+        // Background data: an interruptible render that yields to a sheet drag in progress.
+        // Only update the open result if it is still this scan (never reopen a closed sheet).
+        startTransition(() => {
+          setResult((prev) => (prev === initialResult ? updatedResult : prev));
+          setHistory(prev => prev.map(item => {
+              if (item.id === scanId) {
+                  return { ...item, data: updatedResult };
+              }
+              return item;
+          }));
+        });
 
         // Persist deep analysis to backend
         if (scanId && getUserId()) {
@@ -259,13 +271,13 @@ const App: React.FC = () => {
   /** Score a saved scan and show what was earned (never blocks the visitor). */
   const requestAwards = (scanId: string) => {
     awardScan(scanId)
-      .then((earned) => {
+      .then((earned) => startTransition(() => {
         setPoints(earned.totalPoints);
         if (earned.points > 0) setAwards(earned);
         if (earned.missions.length) {
           setOpenMissions((n) => (n === undefined ? n : Math.max(0, n - earned.missions.length)));
         }
-      })
+      }))
       .catch((err) => console.error('Failed to award scan:', err));
   };
 
@@ -286,6 +298,50 @@ const App: React.FC = () => {
     }
   };
 
+  /** Save the intro narration (WAV + text + timings) with its scan, and keep a local copy for swiping. */
+  const saveNarration = async (recording: NarrationRecording, scanId: string) => {
+    try {
+      const form = new FormData();
+      form.append('audio', new Blob([encodeWav(recording.pcm)], { type: 'audio/wav' }), 'narration.wav');
+      form.append('meta', JSON.stringify({
+        script: recording.script,
+        sentences: recording.sentences.map((s) => ({ ...s, start: Number.isFinite(s.start) ? s.start : 0 })),
+        durationSec: recording.durationSec,
+      }));
+      const res = await fetch(`/api/scans/${scanId}/narration`, {
+        method: 'POST',
+        headers: { 'X-User-Id': getUserId()! },
+        body: form,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { audioUrl } = await res.json();
+      const narrationData = {
+        audioUrl,
+        script: recording.script,
+        sentences: recording.sentences.map((s) => ({ ...s, start: Number.isFinite(s.start) ? s.start : 0 })),
+        durationSec: recording.durationSec,
+      };
+      startTransition(() => setHistory((prev) => prev.map((h) => (h.id === scanId ? { ...h, data: { ...h.data, narration: narrationData } } : h))));
+    } catch (err) {
+      console.error('Failed to save narration:', err);
+    }
+  };
+
+  /** Show a result, morphing the full-screen camera frame into the photo above the sheet where supported. */
+  const presentResult = (response: IdentifyResponse) => {
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
+    // The sheet always rises with its spring; the view transition morphs the photo alongside it
+    setActivePage(0);
+    if (doc.startViewTransition && !reduceMotion) {
+      doc.startViewTransition(() => {
+        flushSync(() => setResult(response));
+      });
+    } else {
+      setResult(response);
+    }
+  };
+
   const processImageAnalysis = async (imageDataUrl: string) => {
     if (isAnalyzing || !language) return;
 
@@ -297,12 +353,13 @@ const App: React.FC = () => {
     setResult(null);
     setCurrentImage(imageDataUrl);
     setCurrentScanId(null);
+    setSheetKey('current');
 
     try {
       const rawBase64 = imageDataUrl.split(',')[1];
       const response = await identifyArtwork(rawBase64, language);
 
-      setResult(response);
+      presentResult(response);
 
       // Save the scan; deep analysis, narration, upload and scoring all run in parallel
       const scanIdPromise: Promise<string | undefined> = getUserId()
@@ -313,14 +370,19 @@ const App: React.FC = () => {
 
       executeDeepAnalysis(rawBase64, response, language, scanIdPromise);
 
-      // Generate TTS narration (parallel, non-blocking)
+      // Narration with live captions (parallel, non-blocking); saved with the scan when done
       if (userContext) {
-        narration.generate(response, userContext.persona, language, userContext.name);
+        Promise.all([
+          narration.generate(response, userContext.persona, language, userContext.name),
+          scanIdPromise,
+        ]).then(([recording, id]) => {
+          if (recording && id) saveNarration(recording, id);
+        });
       }
 
       const scanId = await scanIdPromise;
       if (scanId) {
-        setCurrentScanId(scanId);
+        startTransition(() => setCurrentScanId(scanId));
         requestAwards(scanId);
         await uploadScanImage(imageDataUrl, scanId);
         // Add to history only after the upload so the thumbnail URL resolves
@@ -337,6 +399,7 @@ const App: React.FC = () => {
   };
 
   const handleScan = async () => {
+    unlockAudio();
     try {
       const fullDataUrl = captureFrame();
       if (!fullDataUrl) {
@@ -353,6 +416,7 @@ const App: React.FC = () => {
   };
 
   const handleUpload = async (file: File) => {
+    unlockAudio();
     const reader = new FileReader();
     reader.onload = async (e) => {
         const fullDataUrl = e.target?.result as string;
@@ -378,10 +442,21 @@ const App: React.FC = () => {
 
   const handleSelectHistory = (item: HistoryItem) => {
       setCurrentImage(item.imageUrl);
+      setSheetKey(item.id);
+      setActivePage(0);
       setResult(item.data);
       setCurrentScanId(item.id);
       setIsHistoryOpen(false);
       setTab('scan');
+  };
+
+  const handleShare = async (page: SheetPage) => {
+    if (!page.imageUrl) return;
+    try {
+      const blob = await createArtworkShareCard(page.imageUrl, page.data);
+      await shareOrDownload(blob, `artlens-${page.data.title.replace(/[^a-zA-Z0-9]/g, '-')}.png`, page.data.title,
+        `${page.data.title} by ${page.data.artist} (${page.data.year}) — AI Leadership Academy`);
+    } catch { /* cancelled */ }
   };
 
   // 1. Language Selection
@@ -401,7 +476,15 @@ const App: React.FC = () => {
   }
 
   // 3. Main AR App
-  const showNav = !(tab === 'scan' && isImmersive) && !showGenerateModal;
+  const showNav = !result && !showGenerateModal;
+
+  // Sheet pages: the open scan first, then earlier scans to swipe through
+  const sheetPages: SheetPage[] = result ? [
+    { key: sheetKey, data: result, imageUrl: currentImage, scanId: currentScanId },
+    ...history
+      .filter((h) => h.id !== currentScanId && h.id !== sheetKey)
+      .map((h) => ({ key: h.id, data: h.data, imageUrl: h.imageUrl, scanId: h.id })),
+  ] : [];
 
   return (
     <div className="relative w-full h-dvh bg-[var(--bg)] overflow-hidden">
@@ -414,19 +497,13 @@ const App: React.FC = () => {
       )}
 
       {/* Live Camera Layer */}
-      <CameraFeed videoRef={videoRef} frozenImage={currentImage} language={language} />
-
-      {/* Artwork Title Overlay — visible on frozen frame */}
-      {result && currentImage && !isImmersive && tab === 'scan' && (
-        <div className="absolute top-0 left-0 right-0 z-5 pt-safe pointer-events-none">
-          <div className="mt-20 px-6">
-            <div className="warm-glass rounded-2xl px-4 py-3 inline-block max-w-[80%]">
-              <h2 className="font-serif text-[var(--text)] text-base leading-tight">{result.title}</h2>
-              <p className="text-secondary text-xs mt-0.5">{result.artist} · {result.year}</p>
-            </div>
-          </div>
-        </div>
-      )}
+      <CameraFeed
+        videoRef={videoRef}
+        frozenImage={result ? sheetPages[activePage]?.imageUrl ?? currentImage : currentImage}
+        language={language}
+        transitionName="scan-photo"
+        staged={!!result}
+      />
 
       {/* History Drawer */}
       <HistoryDrawer
@@ -467,34 +544,36 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {result && (
-              <AnalysisResultCard
-                data={result}
-                language={language}
-                userContext={userContext}
-                scanId={currentScanId}
-                artworkImageUrl={currentImage}
-                onClose={handleReset}
-                isDeepAnalyzing={isDeepAnalyzing}
-                forcedChatOpen={forceChatOpen}
-                initialChatQuery={initialChatQuery}
-                onChatClose={() => {
-                    setForceChatOpen(false);
-                    setInitialChatQuery(null);
-                }}
-                onScanAnother={handleReset}
-                onPersonaChange={handlePersonaChange}
-                onGenerateMe={() => setShowGenerateModal(true)}
-                hasSelfie={!!userContext.selfieUrl}
-                narrationIsPlaying={narration.isPlaying}
-                narrationIsGenerating={narration.isGenerating}
-                narrationScript={narration.script}
-                onStopNarration={narration.stop}
-                onImmersiveChange={setIsImmersive}
-                onPointsChange={setPoints}
-              />
-        )}
       </HUDOverlay>
+
+      {/* Result: gesture-driven sheet (medium / full), swipe sideways through earlier scans */}
+      {result && (
+        <ResultSheet
+          key={`${sheetKey}-${currentImage?.length ?? 0}`}
+          pages={sheetPages}
+          language={language}
+          userContext={userContext}
+          isDeepAnalyzing={isDeepAnalyzing}
+          hasSelfie={!!userContext.selfieUrl}
+          animateIn
+          onActiveChange={setActivePage}
+          toast={awards ? (
+            <AwardToast
+              inline
+              awards={awards}
+              language={language}
+              onDismiss={dismissAwards}
+              onViewMissions={() => { setAwards(null); handleReset(); setTab('missions'); }}
+            />
+          ) : null}
+          onClosed={handleReset}
+          onImmersiveChange={setIsImmersive}
+          onPointsChange={setPoints}
+          onPersonaChange={handlePersonaChange}
+          onGenerateMe={() => setShowGenerateModal(true)}
+          onShare={handleShare}
+        />
+      )}
 
       {/* Game panels (camera keeps running underneath) */}
       {tab === 'missions' && (
@@ -532,7 +611,7 @@ const App: React.FC = () => {
         />
       )}
 
-      {awards && (
+      {awards && !result && (
         <AwardToast
           awards={awards}
           language={language}

@@ -97,3 +97,33 @@ export const StatusPip: React.FC<{ done: boolean; label: string }> = ({ done, la
     )}
   </span>
 );
+
+export const PlayIcon: React.FC<IconProps> = (p) => (
+  <Svg {...p}>
+    <path d="M8 5.5v13l10.5-6.5z" fill="currentColor" stroke="none" />
+  </Svg>
+);
+
+export const PauseIcon: React.FC<IconProps> = (p) => (
+  <Svg {...p}>
+    <path d="M8 5.5v13M16 5.5v13" strokeWidth={2.5} />
+  </Svg>
+);
+
+export const ReplayIcon: React.FC<IconProps> = (p) => (
+  <Svg {...p}>
+    <path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7M4 4v4.7h4.7" />
+  </Svg>
+);
+
+export const ShareIcon: React.FC<IconProps> = (p) => (
+  <Svg {...p}>
+    <path d="M12 3v12M7.5 7.5L12 3l4.5 4.5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" />
+  </Svg>
+);
+
+export const ChatIcon: React.FC<IconProps> = (p) => (
+  <Svg {...p}>
+    <path d="M4 5.5h16v10H9l-5 4z" />
+  </Svg>
+);

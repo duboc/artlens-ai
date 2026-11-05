@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { canPromptInstall, isIOS, isStandalone, onInstallAvailabilityChange, promptInstall } from '../../services/install';
 import { Language, Persona, UserContext } from '../../types';
 import { t, tf } from '../../utils/i18n';
 import { ArrowRightIcon } from './icons';
@@ -44,6 +45,7 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
     <div className="border-t border-white/[0.08]">
       <Row label={t('me.history', language)} value={String(historyCount)} onClick={onOpenHistory} />
       <Row label={t('me.gallery', language)} onClick={onOpenGallery} />
+      <InstallRow language={language} />
     </div>
 
     <Segmented
@@ -69,6 +71,28 @@ export const ProfilePanel: React.FC<ProfilePanelProps> = ({
     </button>
   </PanelShell>
 );
+
+/** Offer "Add to Home screen" until the app runs installed (standalone, no browser bars). */
+const InstallRow: React.FC<{ language: Language }> = ({ language }) => {
+  const [, force] = useState(0);
+  const [showHelp, setShowHelp] = useState(false);
+  useEffect(() => onInstallAvailabilityChange(() => force((n) => n + 1)), []);
+  if (isStandalone()) return null;
+  const onClick = async () => {
+    if (canPromptInstall()) await promptInstall();
+    else setShowHelp((v) => !v);
+  };
+  return (
+    <>
+      <Row label={t('install.title', language)} onClick={onClick} />
+      {showHelp && (
+        <p className="py-3 text-sm text-[var(--text)]/80 leading-relaxed border-b border-white/[0.08] max-w-[60ch]">
+          {t(isIOS() ? 'install.ios' : 'install.other', language)}
+        </p>
+      )}
+    </>
+  );
+};
 
 const Row: React.FC<{ label: string; value?: string; onClick: () => void }> = ({ label, value, onClick }) => (
   <button

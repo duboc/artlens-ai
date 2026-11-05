@@ -6,9 +6,13 @@ interface CameraFeedProps {
   videoRef: React.RefObject<HTMLVideoElement>;
   frozenImage?: string | null;
   language: Language;
+  /** View-transition name for the frozen frame (morphs between full screen and the stage). */
+  transitionName?: string;
+  /** Fit the whole photo above the result sheet (Google Lens style) instead of filling the screen. */
+  staged?: boolean;
 }
 
-export const CameraFeed: React.FC<CameraFeedProps> = ({ videoRef, frozenImage, language }) => {
+export const CameraFeed: React.FC<CameraFeedProps> = ({ videoRef, frozenImage, language, transitionName, staged = false }) => {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -82,13 +86,27 @@ export const CameraFeed: React.FC<CameraFeedProps> = ({ videoRef, frozenImage, l
         className={`absolute top-0 left-0 w-full h-full object-cover ${frozenImage ? 'hidden' : 'block'}`}
       />
 
-      {/* Frozen Image Overlay */}
+      {/* Frozen Image Overlay: fills the screen while scanning, fits above the sheet once a result is open */}
       {frozenImage && (
-        <img
+        staged ? (
+          <div className="photo-stage absolute inset-x-0 top-0 flex items-center justify-center px-4">
+            <img
+              src={frozenImage}
+              alt=""
+              draggable={false}
+              className="block max-w-full max-h-full w-auto h-auto object-contain rounded-2xl"
+              style={transitionName ? ({ viewTransitionName: transitionName } as React.CSSProperties) : undefined}
+            />
+          </div>
+        ) : (
+          <img
             src={frozenImage}
-            alt="Frozen Frame"
+            alt=""
+            draggable={false}
             className="absolute top-0 left-0 w-full h-full object-cover"
-        />
+            style={transitionName ? ({ viewTransitionName: transitionName } as React.CSSProperties) : undefined}
+          />
+        )
       )}
 
       {/* Gradient Overlay — warm tint */}

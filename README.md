@@ -112,6 +112,23 @@ API (all require `X-User-Id`; `?museum=` follows the visitor's profile):
 
 Firestore: `leaderboards/{museumId}/players/{userId}` (+ `artworks/` subcollection for de-duplication); quiz and awards live on `users/{userId}/scans/{scanId}`.
 
+## Result Sheet, Narration and Install
+
+The moment after a scan is built to feel like a native app (`components/result/`, `components/sheet/`).
+
+| Feature | How it works |
+|---------|--------------|
+| **Gesture sheet** | The result opens as a sheet that follows the finger. It stops at medium (50%) and full, with momentum projection, a velocity-based critically damped spring, rubber-banding at the top, and pull down to close. Constants come from Apple WWDC18 "Designing Fluid Interfaces" and Android `BottomSheetBehavior` (`sheetPhysics.ts`). While dragging only `transform` changes. |
+| **Photo** | The full-screen frozen frame morphs (View Transitions API) into a photo that fits above the medium sheet, Google Lens style. At full, each scan's own photo grows into the sheet. |
+| **System back** | Android back, the iOS edge swipe and Escape close chat/quiz first, then the sheet (History API). |
+| **Earlier scans** | Swipe sideways inside the sheet; each scan keeps its own narration audio and text. |
+| **Narration text** | When the scan ends, the guide's words appear and the sentence being spoken is highlighted. Sync uses only the Gemini Live stream: transcription text, plus pauses detected in the received PCM and the speaking rate (`utils/narrationTimeline.ts`). There is no speech-to-text service. Across 38 recorded sessions (3 captured in the app), 149/150 sentences switch within 300 ms of the voice. That includes 38/39 on 10 sessions recorded after tuning (`tests/narration-timeline.test.ts` replays every session in real time). |
+| **Controls** | Pause / resume (the AudioContext is suspended), listen again from the buffered audio (no new Live session), "Read only" mode (remembered). Replays use an `<audio>` element, so the lock screen shows Media Session controls. During the first live stream (Web Audio) it may not, so locking the screen pauses the stream to resume later. |
+| **Saved with the scan** | `POST /api/scans/:scanId/narration` (multipart: `audio` WAV ≤4 MB + `meta` JSON) stores `users/{uid}/narrations/{scanId}.wav` in Cloud Storage and `{ audioPath, script, sentences, durationSec }` on the scan. `GET /api/images/...` supports HTTP range requests (Safari audio). |
+| **Install** | `public/manifest.webmanifest` (standalone, theme color, maskable icons), `viewport-fit=cover` + safe areas, no tap highlight / overscroll bounce / accidental selection. The browser bar only disappears once the app is added to the home screen: Profile shows "Add to home screen" (native prompt on Android, steps on iOS). |
+
+Debug hook for tests: with `?debug` in the URL, `window.__artlensNarration` exposes caption switch times, the AudioContext state and the audio element state.
+
 ## Deploying & Access
 
 `./deploy.sh` deploys to Cloud Run from source. By default the service is **public** — visitors at the event open the URL and onboard with name + email; no Google sign-in is required. The `X-User-Id` header identifies the app-level user.
@@ -164,9 +181,12 @@ BASE_URL=https://artlens-ai-xxxxx.run.app ./scripts/test-all.sh
 │   └── apiClient.ts         # Fetch wrapper for backend API
 ├── hooks/
 │   ├── useGeminiChat.ts     # Text chat via POST /api/generate
-│   └── useGeminiLive.ts     # Voice chat via WebSocket /ws/live
+│   ├── useGeminiLive.ts     # Voice chat via WebSocket /ws/live
+│   ├── useNarration.ts      # Intro narration: Live stream, captions, pause/replay, Media Session
+│   └── NarrationProvider.tsx # Keeps narration state out of the app tree (no re-render while dragging)
 ├── utils/
 │   ├── i18n.ts              # Translations (en, pt, es)
+│   ├── narrationTimeline.ts # Sentence timing from Live audio pauses + transcript
 │   └── audioUtils.ts        # PCM encode/decode for live audio
 ├── types.ts                 # Shared TypeScript types
 ├── server/

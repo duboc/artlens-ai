@@ -229,6 +229,12 @@ router.get('/:userId/scans', authMiddleware, async (req: Request, res: Response)
           annotations: data.annotations || [],
           deepAnalysis: data.deepAnalysis || undefined,
           aiTrace: data.aiTrace || undefined,
+          narration: data.narration?.audioPath ? {
+            audioUrl: `/api/images/${data.narration.audioPath}`,
+            script: data.narration.script || '',
+            sentences: data.narration.sentences || [],
+            durationSec: data.narration.durationSec || 0,
+          } : undefined,
         },
       };
     });

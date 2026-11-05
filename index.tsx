@@ -1,7 +1,11 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { NarrationProvider } from './hooks/NarrationProvider';
 import { loadMuseum } from './museums';
+import { initInstallPrompt } from './services/install';
+
+initInstallPrompt();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -15,7 +19,9 @@ const root = ReactDOM.createRoot(rootElement);
 loadMuseum().then(() => {
   root.render(
     <React.StrictMode>
-      <App />
+      <NarrationProvider>
+        <App />
+      </NarrationProvider>
     </React.StrictMode>
   );
 });

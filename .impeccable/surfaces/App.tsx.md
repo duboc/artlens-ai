@@ -17,3 +17,20 @@ FIRST VIEWPORT: Camera stays full-bleed; a bottom tab bar (Scan · Missions · R
 FORM: Extension of the established world; ledger rows from the rolled seed. seed: none (unavailable)
 
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+
+## Surface extension: native post-scan sheet + readable narration
+
+THESIS: The scan result should feel like a native app, not a web modal. It is a sheet that follows the finger, stops where Google Lens and Apple Maps stop, and gives the voice a readable, controllable transcript.
+
+OWN-WORLD: Unchanged and pinned: dark ground, Google blue as the single signal, Google Sans, mono for numbers. Nothing decorative was added. The motion is physical (spring, rubber band, photo morph), not celebratory.
+
+STORY: Scan → the frozen frame shrinks to fit above a rising sheet → the title, the Play/Pause button and the guide's words appear, with the spoken sentence highlighted → drag to full to read more → swipe sideways to earlier scans → system back to return to the camera.
+
+CONTRACT:
+- Detents medium 50% / full. Physics from primary sources (Apple WWDC18, Android BottomSheetBehavior); no invented curves.
+- While dragging, only `transform` changes. Layout follows the detent after release.
+- The points notice lives in the sheet header and never covers the title or the audio controls.
+- The photo is never shown twice: the stage above the sheet at medium, the hero inside the sheet at full.
+- Narration state never re-renders the app tree (NarrationProvider).
+- Caption sync uses only Gemini Live data (no STT), validated on recorded sessions with a held-out set.
+

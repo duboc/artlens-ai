@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
     <title>AI Leadership Academy</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0e1012" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ArtLens" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
 
     <!-- Google Sans + JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -138,44 +146,14 @@
         scrollbar-width: none;
       }
 
-      /* Google 4-color shimmer text effect */
-      .text-shimmer {
-        background: linear-gradient(
-          110deg,
-          #4285F4 0%,
-          #EA4335 25%,
-          #FBBC04 50%,
-          #34A853 75%,
-          #4285F4 100%
-        );
-        background-size: 200% auto;
-        -webkit-background-clip: text;
-        background-clip: text;
-        -webkit-text-fill-color: transparent;
-        animation: shimmer 4s ease-in-out infinite;
-      }
-
       /* Google rainbow gradient bar */
       .google-gradient {
         background: linear-gradient(90deg, #EA4335 0%, #EA4335 25%, #FBBC04 25%, #FBBC04 50%, #34A853 50%, #34A853 75%, #4285F4 75%, #4285F4 100%);
       }
 
-      /* Smooth Google gradient */
-      .google-gradient-smooth {
-        background: linear-gradient(90deg, #EA4335, #FBBC04, #34A853, #4285F4);
-      }
-
-      /* Blue border glow */
-      .border-gold-glow {
-        border-color: rgba(66, 133, 244, 0.2);
-        box-shadow: 0 0 20px rgba(66, 133, 244, 0.05);
-      }
-
-      /* Glass effect */
+      /* Controls floating over the camera: a near-opaque carbon surface keeps them legible on any frame */
       .warm-glass {
-        background: rgba(26, 26, 26, 0.9);
-        backdrop-filter: blur(24px);
-        -webkit-backdrop-filter: blur(24px);
+        background: rgba(22, 24, 27, 0.92);
         border: 1px solid rgba(66, 133, 244, 0.1);
       }
 
@@ -230,6 +208,87 @@
       input, textarea, select {
         font-size: 16px !important;
       }
+
+      /* App-like surface: no tap flash, no page bounce, no accidental text selection */
+      html, body {
+        overscroll-behavior: none;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      input, textarea, [contenteditable], .selectable {
+        -webkit-user-select: text;
+        user-select: text;
+        -webkit-touch-callout: default;
+      }
+      img { -webkit-user-drag: none; }
+      /* Result sheet: rounded at medium, edge-to-edge (and under the status bar) at full.
+         While dragging only `transform` and this non-inherited number change, so a frame
+         costs a composite plus a corner repaint: no style recalc of the content, no layout. */
+      @property --sheet-full { syntax: '<number>'; inherits: false; initial-value: 0; }
+      .result-sheet {
+        border-top-left-radius: calc(28px * (1 - var(--sheet-full)));
+        border-top-right-radius: calc(28px * (1 - var(--sheet-full)));
+        box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.45);
+        overflow: hidden;
+        contain: layout paint;
+      }
+      /* Layout changes follow the detent (set when the spring starts), not the finger */
+      .result-sheet .sheet-header {
+        padding-top: 0;
+        transition: padding-top 280ms cubic-bezier(0.32, 0.72, 0, 1);
+      }
+      .result-sheet[data-detent="full"] .sheet-header { padding-top: env(safe-area-inset-top, 0px); }
+      /* The page's own photo slides into the sheet at full (it sits above the sheet at medium).
+         The hero keeps its layout box; at medium the article is shifted up by its height and the
+         scroller clips it, so the reveal is a compositor-only transform + opacity. */
+      .result-sheet .sheet-hero {
+        height: min(34dvh, 80vw);
+        margin-bottom: 16px;
+        opacity: 0;
+        overflow: hidden;
+        transition: opacity 200ms ease-out;
+      }
+      .result-sheet .scan-article {
+        transform: translateY(calc(-1 * (min(34dvh, 80vw) + 16px)));
+        transition: transform 320ms cubic-bezier(0.32, 0.72, 0, 1);
+      }
+      .result-sheet[data-detent="full"] .sheet-hero { opacity: 1; }
+      .result-sheet[data-detent="full"] .scan-article { transform: none; }
+      /* Content scrolls only at full; at medium a vertical drag moves the sheet */
+      .result-sheet [data-sheet-scroller] { overflow-y: hidden; }
+      .result-sheet[data-detent="full"] [data-sheet-scroller] { overflow-y: auto; }
+      /* Narration text: a 3-line window at medium that follows the spoken sentence; all of it at full */
+      .result-sheet[data-detent="medium"] .caption-window {
+        max-height: calc(var(--caption-lines, 3) * 1.625em);
+        overflow: hidden;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .result-sheet .sheet-header, .result-sheet .sheet-hero, .result-sheet .scan-article { transition: none; }
+      }
+      /* Google Lens style: once a result is open the whole photo fits above the medium sheet */
+      .photo-stage {
+        height: 50dvh;
+        padding-top: calc(env(safe-area-inset-top, 0px) + 72px);
+        padding-bottom: 16px;
+      }
+      /* Full-screen camera frame → photo fitted above the sheet (View Transitions API).
+         The sheet itself slides in with its spring; only the photo morphs. */
+      ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+      ::view-transition-group(scan-photo) {
+        animation-duration: 420ms;
+        animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+      }
+      ::view-transition-image-pair(scan-photo) { isolation: auto; }
+      ::view-transition-old(scan-photo), ::view-transition-new(scan-photo) {
+        animation: none;
+        mix-blend-mode: normal;
+        height: 100%;
+        overflow: clip;
+        object-fit: cover;
+      }
+      ::view-transition-old(scan-photo) { display: none; }
 
       /* Browser surfaces themed from the palette */
       :focus-visible {

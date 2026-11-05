@@ -498,6 +498,32 @@ const translations: Record<string, Record<Language, string>> = {
   'ai.context': { en: 'Context given', pt: 'Contexto fornecido', es: 'Contexto proporcionado' },
   'ai.contextValue': { en: 'Museum profile: {museum}', pt: 'Perfil do museu: {museum}', es: 'Perfil del museo: {museum}' },
   'ai.unavailable': { en: 'Not recorded for this scan.', pt: 'Não registrado neste scan.', es: 'No registrado en este escaneo.' },
+
+  // Result sheet + narration
+  'sheet.close': { en: 'Close', pt: 'Fechar', es: 'Cerrar' },
+  'sheet.position': { en: 'Scan {n} of {total}', pt: 'Scan {n} de {total}', es: 'Escaneo {n} de {total}' },
+  'sheet.swipeHint': { en: 'Swipe sideways for earlier scans', pt: 'Deslize para os lados para ver scans anteriores', es: 'Desliza a los lados para ver escaneos anteriores' },
+  'narration.title': { en: 'Narration', pt: 'Narração', es: 'Narración' },
+  'narration.preparing': { en: 'Your guide is getting ready…', pt: 'Seu guia está se preparando…', es: 'Tu guía se está preparando…' },
+  'narration.pause': { en: 'Pause narration', pt: 'Pausar narração', es: 'Pausar narración' },
+  'narration.resume': { en: 'Resume narration', pt: 'Retomar narração', es: 'Reanudar narración' },
+  'narration.replay': { en: 'Listen again', pt: 'Ouvir de novo', es: 'Escuchar de nuevo' },
+  'narration.play': { en: 'Play narration', pt: 'Tocar narração', es: 'Reproducir narración' },
+  'narration.listen': { en: 'Listen', pt: 'Ouvir', es: 'Escuchar' },
+  'narration.readOnly': { en: 'Read only', pt: 'Só ler', es: 'Solo leer' },
+  'narration.mode': { en: 'How to follow the guide', pt: 'Como acompanhar o guia', es: 'Cómo seguir al guía' },
+  'narration.none': { en: 'No narration was saved for this scan.', pt: 'Nenhuma narração foi salva neste scan.', es: 'No se guardó narración en este escaneo.' },
+  'install.title': { en: 'Install the app', pt: 'Instalar o app', es: 'Instalar la app' },
+  'install.ios': {
+    en: 'In Safari, tap Share, then "Add to Home Screen" to open ArtLens full screen.',
+    pt: 'No Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início" para abrir o ArtLens em tela cheia.',
+    es: 'En Safari, toca Compartir y luego "Añadir a pantalla de inicio" para abrir ArtLens a pantalla completa.',
+  },
+  'install.other': {
+    en: 'Use your browser menu and choose "Install app" or "Add to Home screen".',
+    pt: 'No menu do navegador, escolha "Instalar app" ou "Adicionar à tela inicial".',
+    es: 'En el menú del navegador, elige "Instalar app" o "Añadir a pantalla de inicio".',
+  },
 };
 
 export function t(key: string, language: Language): string {

@@ -9,13 +9,15 @@ const VISIBLE_MS = 6000;
 
 interface AwardToastProps {
   awards: ScanAwards;
+  /** Render in the flow of its container (e.g. under the result sheet's handle) instead of floating. */
+  inline?: boolean;
   language: Language;
   onDismiss: () => void;
   onViewMissions: () => void;
 }
 
 /** Quiet "what you earned" note after a scan; links to Missions when one was completed. */
-export const AwardToast: React.FC<AwardToastProps> = ({ awards, language, onDismiss, onViewMissions }) => {
+export const AwardToast: React.FC<AwardToastProps> = ({ awards, inline = false, language, onDismiss, onViewMissions }) => {
   useEffect(() => {
     const timer = setTimeout(onDismiss, VISIBLE_MS);
     return () => clearTimeout(timer);
@@ -30,8 +32,36 @@ export const AwardToast: React.FC<AwardToastProps> = ({ awards, language, onDism
     })),
   ];
 
-  return (
-    <div className="absolute inset-x-0 top-0 z-50 px-4 pointer-events-none" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 72px)' }}>
+  // In the result sheet: one 44px line in the header's left slot (no layout shift, never over
+  // the title or the audio controls). Tapping it opens Missions when one was completed.
+  if (inline) {
+    const summary = lines.map((l) => l.label).join(' · ');
+    const body = (
+      <>
+        <span className="font-mono tabular text-base text-primary shrink-0">+{awards.points}</span>
+        <span className="truncate text-sm text-[var(--text)]">{summary}</span>
+        {awards.missions.length > 0 && <ArrowRightIcon className="w-4 h-4 text-primary shrink-0" />}
+      </>
+    );
+    return (
+      <div role="status" aria-live="polite" className="award-toast min-w-0 flex-1">
+        {awards.missions.length > 0 ? (
+          <button
+            type="button"
+            onClick={onViewMissions}
+            aria-label={`+${awards.points}: ${summary}. ${t('awards.viewMissions', language)}`}
+            className="min-h-[44px] max-w-full flex items-center gap-2 text-left"
+          >
+            {body}
+          </button>
+        ) : (
+          <p className="min-h-[44px] flex items-center gap-2">{body}</p>
+        )}
+      </div>
+    );
+  }
+
+  const card = (
       <div
         role="status"
         aria-live="polite"
@@ -62,6 +92,11 @@ export const AwardToast: React.FC<AwardToastProps> = ({ awards, language, onDism
           </button>
         )}
       </div>
+  );
+
+  return (
+    <div className="absolute inset-x-0 top-0 z-50 px-4 pointer-events-none" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 72px)' }}>
+      {card}
     </div>
   );
 };

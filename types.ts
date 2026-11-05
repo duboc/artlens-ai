@@ -48,6 +48,13 @@ export interface IdentifyResponse extends ArtData {
   deepAnalysis?: DeepArtData;
   annotations?: Annotation[];
   aiTrace?: AiTrace;
+  /** Intro narration saved with the scan (audio + transcript + sentence timings). */
+  narration?: {
+    audioUrl: string;
+    script: string;
+    sentences: { text: string; charStart: number; start: number }[];
+    durationSec: number;
+  };
 }
 
 /** Points earned by saving a scan (returned by POST /api/scans). */
