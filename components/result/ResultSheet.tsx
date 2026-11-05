@@ -82,6 +82,9 @@ export const ResultSheet: React.FC<ResultSheetProps> = ({
 
   // ─── Rendering the position (transform only: no layout, no React render per frame) ──
 
+  /** The photo above the sheet (CameraFeed's stage); it rises with the sheet. */
+  const stageRef = useRef<HTMLElement | null>(null);
+
   const apply = useCallback((y: number) => {
     yRef.current = y;
     const el = sheetRef.current;
@@ -90,6 +93,15 @@ export const ResultSheet: React.FC<ResultSheetProps> = ({
     const full = Math.max(0, Math.min(1, 1 - y / medium));
     el.style.transform = `translate3d(0, ${y}px, 0)`;
     el.style.setProperty('--sheet-full', full.toFixed(3));
+    // Above medium the photo moves up with the sheet's top edge, so it is pushed away rather than
+    // covered (compositor-only, like the sheet itself)
+    if (!stageRef.current?.isConnected) stageRef.current = document.querySelector<HTMLElement>('.photo-stage');
+    if (stageRef.current) stageRef.current.style.transform = `translate3d(0, ${Math.min(0, y - medium)}px, 0)`;
+  }, []);
+
+  useEffect(() => () => {
+    // Leave the camera layer as we found it
+    if (stageRef.current) stageRef.current.style.transform = '';
   }, []);
 
   const finish = useCallback((target: Detent) => {

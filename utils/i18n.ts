@@ -177,6 +177,7 @@ const translations: Record<string, Record<Language, string>> = {
     pt: 'Você sabia?',
     es: '¿Sabías que?',
   },
+  'result.aboutWork': { en: 'About this work', pt: 'Sobre a obra', es: 'Sobre la obra' },
   'result.uniqueInsights': {
     en: 'Unique Insights',
     pt: 'Curiosidades',

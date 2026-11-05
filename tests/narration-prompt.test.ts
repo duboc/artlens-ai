@@ -15,14 +15,14 @@ describe('narration opening: greet once per visit, then continue', () => {
   it('greets by name at the first artwork', () => {
     const p = narrationPrompts({ ...base, previous: null });
     expect(p.opening).toBe('greet');
-    expect(p.system).toMatch(/Greet the visitor by their first name/);
+    expect(p.system).toMatch(/short greeting with their first name/);
     expect(p.user).toMatch(/greet them by name/);
   });
 
   it('continues the tour without greeting at later artworks', () => {
     const p = narrationPrompts({ ...base, previous: { title: 'La botella de Anís del Mono', artist: 'Juan Gris', at: now - 5 * 60_000 } });
     expect(p.opening).toBe('continue');
-    expect(p.system).not.toMatch(/Greet the visitor by their first name/);
+    expect(p.system).not.toMatch(/short greeting with their first name/);
     expect(p.system).toMatch(/Do NOT greet the visitor/);
     expect(p.user).toMatch(/do not greet them again/);
   });

@@ -5,8 +5,8 @@ import { t, tf } from '../utils/i18n';
 interface HUDOverlayProps {
   isScanning: boolean;
   onScan: () => void;
-  /** Most recent capture (thumbnail next to the shutter, like a camera app); null before the first scan. */
-  lastCapture?: { imageUrl: string; title: string; count: number } | null;
+  /** Recent captures (newest first, up to 3) shown as small overlapping photos next to the shutter; null before the first scan. */
+  lastCapture?: { recent: string[]; count: number } | null;
   /** Reopen earlier captures and everything done with them. */
   onOpenCaptures?: () => void;
   hasResult: boolean;
@@ -139,19 +139,32 @@ export const HUDOverlay: React.FC<HUDOverlayProps> = ({
 
             </button>
 
-            {/* Last capture: reopens earlier artworks with their narration, chat and quiz */}
+            {/* Recent captures as small overlapping photos: reopens earlier artworks with their narration, chat and quiz */}
             {lastCapture && onOpenCaptures && (
               <button
                 type="button"
                 onClick={onOpenCaptures}
                 disabled={isScanning}
                 aria-label={tf('captures.open', language, { n: lastCapture.count })}
-                className={`absolute right-8 sm:right-16 w-14 h-14 rounded-2xl overflow-hidden border-2 border-[var(--text)]/80 bg-[var(--surface)] active:scale-95 transition-all duration-300
+                className={`absolute right-5 sm:right-14 h-14 flex items-center active:scale-95 transition-all duration-300
                   ${isScanning ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+                style={{ width: 44 + (lastCapture.recent.length - 1) * 14 + 8 }}
               >
-                <img src={lastCapture.imageUrl} alt="" width={56} height={56} draggable={false} className="w-full h-full object-cover" />
+                {/* oldest first, so the newest sits on top at the right */}
+                {[...lastCapture.recent].reverse().map((src, i, arr) => (
+                  <img
+                    key={src}
+                    src={src}
+                    alt=""
+                    width={44}
+                    height={44}
+                    draggable={false}
+                    className="absolute w-11 h-11 rounded-xl object-cover border-2 border-[var(--bg)] bg-[var(--surface)] shadow-[0_2px_6px_rgba(0,0,0,0.45)]"
+                    style={{ left: i * 14, transform: `rotate(${(i - (arr.length - 1)) * 6}deg)`, zIndex: i }}
+                  />
+                ))}
                 {lastCapture.count > 1 && (
-                  <span className="absolute bottom-0.5 right-0.5 min-w-[20px] h-5 px-1 rounded-full bg-primary-dark text-onPrimary font-mono tabular text-xs leading-5 text-center">
+                  <span className="absolute -top-1 right-0 z-10 min-w-[20px] h-5 px-1 rounded-full bg-primary-dark text-onPrimary font-mono tabular text-xs leading-5 text-center">
                     {lastCapture.count}
                   </span>
                 )}

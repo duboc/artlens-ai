@@ -43,7 +43,7 @@ export function narrationPrompts(input: NarrationPromptInput): { system: string;
 
   const steps = opening === 'greet'
     ? [
-        'Greet the visitor by their first name (this is the first artwork of their visit)',
+        'Open with a short greeting with their first name, on its own (e.g. "Hi Ana!", "¡Hola, Ana!", "Olá, Ana!") — this is the first artwork of their visit',
         'Identify the artwork naturally (title, artist)',
         'Share one compelling detail — a story, hidden meaning, technique, or surprising fact',
         'End with a brief invitation to continue the conversation',

@@ -115,7 +115,7 @@ export const identifyArtwork = async (base64Image: string, language: Language): 
       }
 
       "country": The artist's nationality.
-      "funFact": An interesting trivia point.
+      "funFact": An interesting trivia point, ONE sentence of at most 25 words.
       "confidence": "high", "medium" or "low": how sure you are that this is the right artwork.
       "evidence": One short sentence on the visual clues and sources that led to your answer.
 
@@ -215,8 +215,13 @@ export const getDeepArtworkAnalysis = async (base64Image: string, currentData: A
       Act as a world-class art historian. Provide a deep analysis of "${currentData.title}" by ${currentData.artist}.
 
       Return a JSON object with keys: "historicalContext", "technicalAnalysis", "symbolism", "curiosities".
+      The visitor reads this on a phone while standing in front of the work: be brief and concrete.
 
-      "curiosities": An array of 3 unique, lesser-known facts or specific details about this work.
+      "historicalContext": ONE short paragraph, at most 2 sentences (about 40 words).
+      "technicalAnalysis": ONE short paragraph, at most 2 sentences (about 40 words).
+      "symbolism": ONE short paragraph, at most 2 sentences (about 40 words).
+      "curiosities": An array of exactly 3 unique, lesser-known facts about this work, each ONE sentence of at most 18 words.
+      No line breaks, no lists or markdown inside the values.
 
       IMPORTANT: Provide content in ${langName}. JSON keys in English.
     `;

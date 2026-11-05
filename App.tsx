@@ -538,7 +538,7 @@ const App: React.FC = () => {
       <HUDOverlay
         isScanning={isAnalyzing}
         onScan={handleScan}
-        lastCapture={history[0] ? { imageUrl: history[0].imageUrl, title: history[0].data.title, count: history.length } : null}
+        lastCapture={history.length ? { recent: history.slice(0, 3).map((h) => h.imageUrl), count: history.length } : null}
         onOpenCaptures={() => history[0] && handleSelectHistory(history[0])}
         hasResult={!!result}
         language={language}

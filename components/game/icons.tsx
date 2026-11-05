@@ -127,3 +127,26 @@ export const ChatIcon: React.FC<IconProps> = (p) => (
     <path d="M4 5.5h16v10H9l-5 4z" />
   </Svg>
 );
+
+/** Historical context: a column / landmark. */
+export const LandmarkIcon: React.FC<IconProps> = (p) => (
+  <Svg {...p}>
+    <path d="M3 9.5 12 4l9 5.5M5 10v8M9.67 10v8M14.33 10v8M19 10v8M3.5 20.5h17" />
+  </Svg>
+);
+
+/** Technique: a brush. */
+export const BrushIcon: React.FC<IconProps> = (p) => (
+  <Svg {...p}>
+    <path d="M14.5 4.5 19.5 9.5 11 18l-5-5 8.5-8.5Z" />
+    <path d="M6 13c-2 0-3 1.5-3 3.5S2 20 2 20s3.5.5 5-1 1.5-3 1.5-3" />
+  </Svg>
+);
+
+/** Symbolism: an eye. */
+export const EyeIcon: React.FC<IconProps> = (p) => (
+  <Svg {...p}>
+    <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />
+    <circle cx="12" cy="12" r="3" />
+  </Svg>
+);

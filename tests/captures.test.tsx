@@ -13,7 +13,7 @@ const hud = (over: Partial<React.ComponentProps<typeof HUDOverlay>> = {}) => (
 
 describe('camera only + earlier captures', () => {
   it('offers no way to upload a photo from the device', () => {
-    const { container } = render(hud({ lastCapture: { imageUrl: '/a.jpg', title: 'Guernica', count: 3 }, onOpenCaptures: vi.fn() }));
+    const { container } = render(hud({ lastCapture: { recent: ['/c.jpg', '/b.jpg', '/a.jpg'], count: 3 }, onOpenCaptures: vi.fn() }));
     expect(container.querySelector('input[type=file]')).toBeNull();
     expect(screen.queryByRole('button', { name: /upload/i })).toBeNull();
     expect(screen.getByRole('button', { name: 'Tap to identify' })).toBeTruthy();
@@ -21,9 +21,13 @@ describe('camera only + earlier captures', () => {
 
   it('shows the last capture next to the shutter and reopens earlier scans', () => {
     const onOpen = vi.fn();
-    render(hud({ lastCapture: { imageUrl: '/a.jpg', title: 'Guernica', count: 3 }, onOpenCaptures: onOpen }));
+    render(hud({ lastCapture: { recent: ['/c.jpg', '/b.jpg', '/a.jpg'], count: 3 }, onOpenCaptures: onOpen }));
     const thumb = screen.getByRole('button', { name: /Your scans \(3\)/ });
     expect(thumb.textContent).toContain('3');
+    // small overlapping photos, newest on top
+    const imgs = [...thumb.querySelectorAll('img')];
+    expect(imgs.map((i) => i.getAttribute('src'))).toEqual(['/a.jpg', '/b.jpg', '/c.jpg']);
+    expect(Number(imgs[2].style.zIndex)).toBeGreaterThan(Number(imgs[0].style.zIndex));
     fireEvent.click(thumb);
     expect(onOpen).toHaveBeenCalled();
   });
